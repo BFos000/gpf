@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<base href="v/0a1c1890ca/">
+<title>Fantasy GP</title>
+<meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
+<meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%226%22%20fill%3D%22%23c8102e%22%2F%3E%3Cpath%20d%3D%22M6%208h4v4H6zm8%200h4v4h-4zm8%200h4v4h-4zM10%2012h4v4h-4zm8%200h4v4h-4zM6%2016h4v4H6zm8%200h4v4h-4zm8%200h4v4h-4zM10%2020h4v4h-4zm8%200h4v4h-4z%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+</head><body>
+<noscript><p style="font:16px sans-serif;padding:24px">Fantasy GP needs JavaScript.</p></noscript>
+<title>Fantasy GP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: broadcast pit-wall. Timing tower | track map | race feed, with the side-on paperdoll strip and
+   transport controls under the map. Single dark theme (night garage), by choice. */
+:root {
+  --bg: #0d1014; --panel: #151a20; --panel-2: #1d242c; --line: #29313b;
+  --fg: #e8ecf1; --muted: #8b96a3; --accent: #ffb000;
+  --track: #3a434e; --track-edge: #1e252d; --road: #22282f; --kerb-a: #c8ced6; --kerb-b: #b8332e;
+  --sc: #d9a400; --purple: #b06cff; --green: #39d98a; --bad: #ff6b5e;
+  --font-ui: "Titillium Web", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px;
+  padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-block: 10px; box-sizing: border-box; }
+* { box-sizing: border-box; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { display: grid; gap: 10px; height: 100%; min-height: 560px;
+  grid-template-columns: var(--tower-w, 300px) minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(0, 1fr) 220px auto;
+  grid-template-areas: "top top top" "tower map feed" "strip strip strip" "ctl ctl ctl"; }
+.tower { position: relative; }
+.resizer { position: absolute; top: 0; right: -8px; width: 10px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
+.resizer::after { content: ""; position: absolute; top: 50%; left: 3px; width: 4px; height: 40px; margin-top: -20px; border-radius: 2px; background: var(--line); }
+.resizer:hover::after, .resizer.drag::after { background: var(--accent); }
+.top { grid-area: top; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.brand { font-weight: 900; font-size: 20px; letter-spacing: .02em; text-transform: uppercase; margin-right: 6px; }
+.brand b { color: var(--accent); }
+.top select, .top input, .btn { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px; }
+.top select#race { min-width: 0; max-width: 340px; }
+.top input#seed { width: 84px; font-family: var(--font-data); }
+.btn { cursor: pointer; font-weight: 600; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: #111; border-color: var(--accent); }
+.chip { font-family: var(--font-data); font-size: 12px; padding: 3px 8px; border-radius: 3px; background: var(--panel-2); color: var(--muted); }
+.spacer { flex: 1; }
+label.inline { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+.tower { grid-area: tower; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.tower header, .feed header { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;
+  border-bottom: 1px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.tower header button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; padding: 0; }
+.rows { position: relative; flex: 1; min-height: 0; overflow: auto; }
+.rows .sizer { pointer-events: none; }
+.row { position: absolute; left: 0; top: 0; width: max(100%, var(--roww, 0px)); height: 28px; display: grid; align-items: center;
+  grid-template-columns: 26px 4px 24px minmax(var(--nmw, 0px), 1fr) 76px 64px 30px; gap: 6px; padding: 0 8px 0 4px;
+  transition: transform .45s ease; cursor: pointer; font-family: var(--font-data); font-size: 12.5px; }
+.row:hover { background: var(--panel-2); }
+.row.focus { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.row .p { text-align: right; font-weight: 600; }
+.row .bar { height: 18px; border-radius: 1px; }
+.row .hel { width: 24px; height: 24px; background-repeat: no-repeat; }
+.row .nm { font-family: var(--font-ui); font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .nm small { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 4px; }
+.row .gap, .row .lap { text-align: right; font-variant-numeric: tabular-nums; }
+.row .lap { color: var(--muted); }
+.row .lap.pb { color: var(--green); } .row .lap.fl { color: var(--purple); }
+.row .st { font-size: 10px; text-align: center; border-radius: 2px; font-weight: 600; }
+.row .st.pit { background: var(--accent); color: #111; } .row .st.out { color: var(--bad); } .row .st.fin { color: var(--fg); }
+.row.dnf { opacity: .45; }
+
+.map { grid-area: map; }
+.map canvas, .strip canvas { width: 100%; height: 100%; display: block; }
+.map { position: relative; }
+.map canvas.elev { position: absolute; left: 12px; bottom: 10px; width: calc(100% - 24px); max-width: 520px; height: 62px; pointer-events: none; }
+.map canvas.elev[hidden] { display: none; }
+.hud { position: absolute; left: 12px; top: 10px; display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+.hud .race { font-weight: 700; font-size: 16px; }
+.hud .lap { font-family: var(--font-data); font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
+.hud .lap span { color: var(--muted); font-size: 16px; }
+.hud .sub { color: var(--muted); font-size: 12px; font-family: var(--font-data); }
+.flag { position: absolute; right: 12px; top: 10px; padding: 4px 12px; font-weight: 900; letter-spacing: .1em; border-radius: 3px; font-size: 13px; }
+.flag.sc { background: var(--sc); color: #111; }
+.flag.chq { background: repeating-conic-gradient(var(--fg) 0 25%, var(--bg) 0 50%) 0 0 / 12px 12px; color: transparent; width: 72px; height: 26px; }
+.flag.chq span { background: var(--bg); color: var(--fg); padding: 2px 6px; position: relative; top: 30px; font-size: 11px; white-space: nowrap; }
+
+.strip { grid-area: strip; }
+.zoom { position: absolute; left: 8px; bottom: 34px; display: flex; gap: 4px; }
+.zoom .btn { padding: 1px 8px; font-size: 13px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
+.zoom .hills { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.zoom .hills input { margin: 0; }
+.zoom .hills:has(input:disabled) { opacity: .5; cursor: default; }
+.strip canvas { cursor: pointer; }
+.side { grid-area: feed; display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; }
+.feed { display: flex; flex-direction: column; flex: 1; min-height: 120px; }
+.pitwall { display: flex; flex-direction: column; flex: 0 1 auto; max-height: 62%; }
+.pitwall header { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;
+  border-bottom: 1px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.pw-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.pw-car { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; }
+.pw-car .hel { width: 28px; height: 28px; background-repeat: no-repeat; }
+.pw-car .nm { font-weight: 700; font-size: 15px; line-height: 1.1; }
+.pw-car .nm small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.badge { font-family: var(--font-data); font-size: 11px; padding: 2px 6px; border-radius: 3px; background: var(--panel-2); color: var(--muted); }
+.badge.you { background: var(--accent); color: #111; font-weight: 600; }
+.pw-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12px; }
+.pw-stats div { display: flex; flex-direction: column; }
+.pw-stats span { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; }
+.pw-stats b { font-family: var(--font-data); font-weight: 500; font-size: 12.5px; }
+.wear { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.wear i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--accent) 60%, var(--bad)); }
+.pw-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pw-log li { font-size: 12.5px; line-height: 1.35; display: grid; grid-template-columns: 30px 1fr; gap: 6px; }
+.pw-log li .l { font-family: var(--font-data); color: var(--muted); font-size: 11px; padding-top: 1px; }
+.pw-log li.box { color: var(--accent); } .pw-log li.call { color: var(--green); }
+.pw-log .think { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.pw-ctl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pw-ctl .btn { padding: 3px 8px; font-size: 12.5px; }
+.pw-ctl .seg { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.pw-ctl .seg button { background: none; border: 0; padding: 3px 7px; cursor: pointer; font-size: 12px; color: var(--muted); }
+.pw-ctl .seg button.on { background: var(--panel-2); color: var(--accent); font-weight: 600; }
+.pw-ctl label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; width: 100%; }
+#pw-msg { font-size: 12px; color: var(--green); min-height: 1em; }
+.row .nm .mine { color: var(--accent); margin-right: 3px; }
+.feed ol { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
+.feed li { padding: 5px 10px; display: grid; grid-template-columns: 34px 1fr; gap: 6px; font-size: 13px; cursor: pointer; border-left: 3px solid transparent; }
+.feed li:hover { background: var(--panel-2); }
+.feed li .l { font-family: var(--font-data); color: var(--muted); font-size: 11.5px; padding-top: 1px; }
+.feed li.pass { border-color: var(--green); } .feed li.retire { border-color: var(--bad); } .feed li.sc, .feed li.sc_end, .feed li.sc_in, .feed li.vsc, .feed li.vsc_end { border-color: var(--sc); }
+.feed li.pit, .feed li.call { border-color: var(--accent); } .feed li.flag { border-color: var(--fg); font-weight: 700; }
+
+.ctl { grid-area: ctl; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 10px; }
+.ctl .play { width: 40px; height: 32px; font-size: 15px; }
+.speeds { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.speeds button { background: none; border: 0; padding: 5px 9px; cursor: pointer; font-family: var(--font-data); font-size: 12px; color: var(--muted); }
+.speeds button.on { background: var(--panel-2); color: var(--accent); font-weight: 600; }
+.ctl input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+.clock { font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; min-width: 120px; text-align: right; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-family: var(--font-data); }
+
+dialog#setup, dialog#season, dialog#career, dialog#real { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 16px;
+  width: min(980px, calc(100vw - 24px)); max-height: calc(100vh - 32px); display: none; flex-direction: column; gap: 12px; }
+dialog#setup[open], dialog#season[open], dialog#career[open], dialog#real[open] { display: flex; }
+dialog#setup::backdrop, dialog#season::backdrop, dialog#career::backdrop, dialog#real::backdrop { background: rgba(0, 0, 0, .6); }
+dialog#career, dialog#real { width: min(1280px, calc(100vw - 24px)); height: calc(100vh - 32px); }
+#rs-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.rs-lv { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.rs-lvthumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; flex: 1; min-width: 300px; }
+.rs-lvf { margin: 0; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); text-align: center; }
+.rs-lvf.on { outline: 2px solid var(--accent); }
+.rs-lvf img { width: 100%; height: 56px; object-fit: contain; }
+.rs-lvf figcaption { font-size: 11px; color: var(--muted); }
+#rs-body { overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+#rs-body h3 { margin: 6px 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+#rs-body h3 small { text-transform: none; letter-spacing: 0; }
+#rs-body input:not([type]), #rs-body input[type=number] { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; color: inherit; }
+.cr-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cr-head h2 { margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: .03em; }
+#cr-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.cr-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.cr-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 12px; cursor: pointer; color: var(--muted); }
+.cr-tabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
+.cr-tabs.sub { margin-bottom: 6px; }
+#cr-body { overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+#cr-body h3 { margin: 6px 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+#cr-body h3 small { text-transform: none; letter-spacing: 0; }
+.muted { color: var(--muted); } .small { font-size: 12px; } .bad { color: var(--bad); } .ok { color: var(--green); }
+.cr-note { background: var(--panel-2); border-radius: 6px; padding: 10px 12px; }
+.cr-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.cr-card { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.cr-card header { display: flex; gap: 8px; align-items: center; } .cr-card header b { font-size: 15px; }
+.cr-ups { display: flex; flex-direction: column; gap: 4px; }
+.cr-up { display: grid; grid-template-columns: 80px 1fr 60px auto; gap: 6px; align-items: center; }
+.cr-up .lv { font-size: 10px; letter-spacing: 1px; color: var(--accent); white-space: nowrap; overflow: hidden; }
+.cr-up .btn, .cr-t .btn { padding: 2px 8px; font-size: 12px; }
+.cr-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cr-t th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 500; padding: 4px 6px; position: sticky; top: 0; background: var(--panel); }
+.cr-t td { padding: 3px 6px; border-top: 1px solid var(--line); }
+.cr-t td.n { font-family: var(--font-data); text-align: right; color: var(--muted); } .cr-t td.b { color: var(--fg); font-weight: 600; }
+.cr-t tr.mine td { color: var(--accent); } .cr-t tr.next td { background: var(--panel-2); }
+.cr-t tr.up td:first-child { box-shadow: inset 3px 0 var(--green); } .cr-t tr.down td:first-child { box-shadow: inset 3px 0 var(--bad); }
+.cr-t td.form i { display: inline-block; min-width: 20px; text-align: center; font-style: normal; font-family: var(--font-data); font-size: 11px; color: var(--muted); }
+.cr-t td.form i.w { color: var(--accent); font-weight: 700; } .cr-t td.form i.p { color: var(--fg); } .cr-t td.form i.r { color: var(--bad); }
+.cr-card select, .cr-t select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 2px 4px; max-width: 100%; }
+.cr-teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
+.cr-team { text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--tc); border-radius: 4px; padding: 6px 8px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+/* race-by-race results grids (archive.js) */
+.rg-wrap { overflow-x: auto; max-width: 100%; }
+table.rg td, table.rg th { padding: 2px 5px; }
+.rg-h { font-size: 10.5px; text-align: center; font-family: var(--font-data); }
+.rg-c { text-align: center; font-family: var(--font-data); font-size: 12px; min-width: 22px; }
+.rg-c.g { background: rgba(214, 175, 54, .35); font-weight: 700; } .rg-c.s { background: rgba(170, 170, 180, .3); }
+.rg-c.b { background: rgba(176, 115, 60, .3); } .rg-c.pts { background: rgba(80, 160, 90, .16); }
+.rg-c.r { color: var(--muted); } .rg-c.na { color: var(--muted); opacity: .6; }
+.rg-row > td { padding: 6px 4px 12px !important; background: var(--panel-2); }
+/* car and helmet thumbnails (thumbs.js) */
+canvas.th { display: inline-block; vertical-align: middle; }
+.th-cell { width: 1%; padding-top: 1px !important; padding-bottom: 1px !important; }
+.th-name { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.cr-seat canvas.th-car { margin-right: 4px; }
+.cr-team canvas.th-car { align-self: flex-start; margin-bottom: 2px; }
+.cr-team span { font-size: 11.5px; color: var(--muted); } .cr-team i { font-style: normal; color: var(--fg); }
+.cr-team.on { outline: 2px solid var(--accent); }
+.cr-new p { margin: 0 0 8px; color: var(--muted); max-width: 900px; }
+.cr-market { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 14px; min-height: 0; }
+@media (max-width: 900px) { .cr-market { grid-template-columns: 1fr; } }
+.cr-mleft { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.cr-seat { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+.cr-seat.open { cursor: pointer; border-color: var(--bad); } .cr-seat.on { outline: 2px solid var(--accent); }
+.cr-seat .btn.x { padding: 0 6px; font-size: 11px; }
+.cr-helmet { display: inline-block; width: auto; object-fit: contain; image-rendering: auto; }
+.cr-helmet.none { border: 1px dashed var(--line); border-radius: 50%; }
+.cr-me .cr-up { grid-template-columns: 120px 1fr 64px auto; }
+.cr-drvform { display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0; }
+.cr-drvfields { display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
+.cr-drvfields label { display: flex; gap: 8px; align-items: center; }
+.cr-drvfields input { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; color: inherit; }
+.cr-drvfields #cr-name { flex: 1; min-width: 0; }
+.cr-drvhelmet { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.cr-hdrop { width: 180px; min-height: 140px; border: 2px dashed var(--line); border-radius: 8px; display: flex; flex-direction: column; gap: 6px;
+  align-items: center; justify-content: center; text-align: center; padding: 8px; cursor: pointer;
+  background: repeating-conic-gradient(var(--panel-2) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.cr-hdrop:hover, .cr-hdrop.over { border-color: var(--accent); }
+.cr-hdrop img { max-width: 100%; max-height: 110px; }
+.cr-hedit summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.cr-hedit .cr-drvhelmet { margin-top: 6px; }
+.cr-hprev { width: 140px; height: 140px; border: 1px solid var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px;
+  background: repeating-conic-gradient(var(--panel-2) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.cr-hprev img { max-width: 100%; max-height: 100%; }
+.cr-hopts { display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
+.cr-log { list-style: none; margin: 0; padding: 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; }
+.cr-log li.mine { color: var(--accent); }
+.cr-round { border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.cr-round h3 { margin-top: 0 !important; }
+.cr-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .cr-cols h4 { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
+.cr-cols ul { margin: 0; padding-left: 18px; }
+#cr-json { width: 100%; background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; font-family: var(--font-data); font-size: 11px; }
+#cr-filter, #cr-slot { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; }
+dialog#season { width: min(1180px, calc(100vw - 24px)); }
+#se-body { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 12px; overflow: auto; min-height: 0; }
+@media (max-width: 900px) { #se-body { grid-template-columns: 1fr; } }
+.se-col { min-width: 0; }
+.se-col h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.se-col table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.se-col th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 500; padding: 4px 6px; }
+.se-col td { padding: 3px 6px; border-top: 1px solid var(--line); }
+.se-col td small { color: var(--muted); }
+.se-col td.n { font-family: var(--font-data); color: var(--muted); text-align: right; white-space: nowrap; }
+.se-col td.b { color: var(--fg); font-weight: 600; }
+.se-col tr.mine td { color: var(--accent); } .se-col tr.next td { background: var(--panel-2); }
+.se-col .wet { font-size: 10px; color: #7fb8ff; text-transform: uppercase; }
+#se-info { color: var(--muted); font-size: 12px; }
+#seasonchip { cursor: pointer; }
+.su-head { display: flex; justify-content: space-between; align-items: center; }
+.su-head h2 { margin: 0; font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: .03em; }
+.su-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.su-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.su-grid label .v { color: var(--accent); text-transform: none; }
+.su-grid input, .su-grid select, .su-table input, .su-table select, .su-bar select, #su-json {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; color: var(--fg); font-size: 14px; text-transform: none; letter-spacing: 0; }
+.su-grid input[type=range] { padding: 0; accent-color: var(--accent); }
+.su-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.su-bar .grp { display: flex; gap: 4px; }
+.su-table { overflow: auto; min-height: 120px; flex: 1; border: 1px solid var(--line); border-radius: 4px; }
+.su-table table { width: 100%; border-collapse: collapse; }
+.su-table th { position: sticky; top: 0; background: var(--panel); text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 6px; }
+.su-table td { padding: 3px 6px; border-top: 1px solid var(--line); }
+.su-table td.n { font-family: var(--font-data); color: var(--muted); width: 28px; text-align: right; }
+.su-table input { width: 100%; min-width: 160px; }
+.su-table .x { padding: 2px 8px; }
+.su-cfg summary { cursor: pointer; color: var(--muted); }
+.su-cfg[open] { display: flex; flex-direction: column; gap: 8px; }
+#su-json { width: 100%; font-family: var(--font-data); font-size: 12px; }
+.su-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+#su-msg { color: var(--muted); font-size: 13px; }
+.btn.file { display: inline-flex; align-items: center; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 270px minmax(0, 1fr); grid-template-rows: auto minmax(340px, 1fr) 210px auto 220px;
+    grid-template-areas: "top top" "tower map" "strip strip" "ctl ctl" "feed feed"; height: auto; }
+  .side { flex-direction: row; } .side > * { flex: 1; } .pitwall { max-height: none; }
+}
+@media (max-width: 720px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 320px 200px auto 560px 260px;
+    grid-template-areas: "top" "map" "strip" "ctl" "tower" "feed"; }
+  .side { flex-direction: column; }
+  .top select#race { max-width: 100%; flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .row { transition: none; } }
+  .su-fb .fb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 10px; margin: 6px 0; }
+  .su-fb .fb-grid label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
+  .su-fb .fb-grid input, .su-fb .fb-grid select { width: 100%; box-sizing: border-box; }
+  .su-fb .su-bar { flex-wrap: wrap; gap: 4px; }
+</style>
+
+<div class="app" id="app">
+  <div class="top">
+    <div class="brand">Fantasy <b>GP</b></div>
+    <select id="race" aria-label="Load a real race"></select>
+    <button class="btn" id="opensetup" title="Choose circuit, rules year, drivers and cars">Setup…</button>
+    <button class="btn" id="openseason" title="Run a championship with this field">Season…</button>
+    <button class="btn" id="opencareer" title="Career mode: run a constructor through a tiered championship">Career…</button>
+    <button class="btn" id="openreal" title="Real Seasons: the real seasons in order, real teams and calendars, an open driver market">Real Seasons…</button>
+    <label class="inline" for="seed">Seed <input id="seed" type="number" min="1" step="1" value="1"></label>
+    <button class="btn" id="reseed" title="Run again with a new random seed">New seed</button>
+    <button class="btn primary" id="go">Run race</button>
+    <span class="spacer"></span>
+    <span class="chip" id="wx"></span>
+    <span class="chip" id="seasonchip" hidden></span>
+    <button class="btn primary" id="careerchip" hidden>Back to career</button>
+    <button class="btn primary" id="realchip" hidden>Back to Real Seasons</button>
+    <span class="chip" id="result"></span>
+    <span class="chip" title="Data sources: race results and lap times from the Ergast database; 1950-80 entries and qualifying from F1DB (CC BY 4.0); pre-war (1906-40) Grand Prix results from The Golden Era of GP Racing (goldenera.fi) by Leif Snellman and Hans Etzrodt; circuit outlines from bacinger/f1-circuits (MIT); track layouts © OpenStreetMap contributors (ODbL) and F1DB layout drawings (CC BY 4.0); weather from Open-Meteo (CC BY 4.0); track heights from the Copernicus DEM GLO-30 (© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; all rights reserved) and the AWS Terrain Tiles (Mapzen; SRTM, USGS 3DEP, UK Environment Agency and other national sources), with SRTM (NASA) where Copernicus is not public.">Data sources</span>
+  </div>
+
+  <section class="panel tower" aria-label="Timing tower">
+    <header><span>Timing</span><button id="gapmode" title="Switch between gap to leader and interval">Gap to leader</button></header>
+    <div class="rows" id="rows"></div>
+    <div class="resizer" id="towerresize" role="separator" aria-orientation="vertical" aria-label="Resize the timing tower" tabindex="0" title="Drag to resize (arrow keys work too)"></div>
+  </section>
+
+  <section class="panel map" aria-label="Track map">
+    <canvas id="mapcv"></canvas>
+    <canvas id="elevcv" class="elev" aria-label="Elevation profile of the lap" hidden></canvas>
+    <div class="hud">
+      <div class="race" id="hudrace"></div>
+      <div class="lap" id="hudlap"></div>
+      <div class="sub" id="hudsub"></div>
+    </div>
+    <div class="flag" id="flag" hidden></div>
+    <div class="loading" id="loading">Loading race data…</div>
+  </section>
+
+  <div class="side">
+  <section class="panel pitwall" aria-label="Pit wall for the focused car">
+    <header><span>Pit wall</span><span class="badge" id="pw-badge">CPU</span></header>
+    <div class="pw-body">
+      <div class="pw-car"><span class="hel" id="pw-hel"></span><span class="nm" id="pw-name"></span><span class="badge" id="pw-pos"></span></div>
+      <div class="pw-stats">
+        <div><span>Tyres</span><b id="pw-tyres"></b></div>
+        <div><span>Costing</span><b id="pw-cost"></b></div>
+        <div><span>Stops</span><b id="pw-stops"></b></div>
+        <div><span>Plan</span><b id="pw-plan"></b></div>
+        <div id="pw-fuelbox" hidden><span>Fuel</span><b id="pw-fuel"></b></div>
+        <div><span>Strategist</span><b id="pw-style"></b></div>
+      </div>
+      <div class="wear" title="Tyre wear against expected tyre life"><i id="pw-wear" style="width:0%"></i></div>
+      <div class="pw-log"><span class="think">Thinking</span><ol class="pw-log" id="pw-log"></ol></div>
+      <div class="pw-ctl" id="pw-ctl"></div>
+      <div id="pw-msg" role="status"></div>
+    </div>
+  </section>
+  <section class="panel feed" aria-label="Race feed">
+    <header><span>Race feed</span><span id="feedcount"></span></header>
+    <ol id="feed"></ol>
+  </section>
+  </div>
+
+  <section class="panel strip" aria-label="On-track view of the focused car">
+    <canvas id="stripcv"></canvas>
+    <div class="zoom">
+      <button class="btn" id="zin" title="Zoom in (or scroll on the strip)" aria-label="Zoom in">+</button>
+      <button class="btn" id="zout" title="Zoom out" aria-label="Zoom out">−</button>
+      <button class="btn" id="zfit" title="Show the cars around the focus driver">Pack</button>
+      <button class="btn" id="prevcar" title="Focus the car ahead" aria-label="Focus the car ahead">▲</button>
+      <button class="btn" id="nextcar" title="Focus the car behind" aria-label="Focus the car behind">▼</button>
+      <label class="btn hills" title="Show the track's hills on the strip"><input type="checkbox" id="hills" checked> Hills</label>
+    </div>
+  </section>
+
+  <div class="panel ctl">
+    <button class="btn play" id="play" aria-label="Play">▶</button>
+    <div class="speeds" id="speeds"></div>
+    <input type="range" id="scrub" min="-3" max="100" step="0.1" value="0" aria-label="Race time">
+    <span class="clock" id="clock"></span>
+  </div>
+</div>
+<dialog id="setup" aria-label="Race setup">
+  <div class="su-head"><h2>Race setup</h2><button class="btn" id="su-close" aria-label="Close setup">✕</button></div>
+  <div class="su-grid">
+    <label for="su-name">Name<input id="su-name" placeholder="e.g. Senna vs Verstappen at Suzuka"></label>
+    <label for="su-circuit">Circuit<select id="su-circuit"></select></label>
+    <label for="su-layout">Layout<select id="su-layout"></select></label>
+    <label for="su-year" title="Sets the era: overtaking, pit stops, reliability, safety cars, lap-time level">Rules year<input id="su-year" type="number" min="1906" max="2024"></label>
+    <label for="su-laps">Laps<input id="su-laps" type="number" min="1" max="120"></label>
+    <label for="su-wet">Weather <span id="su-wetv" class="v"></span><input id="su-wet" type="range" min="0" max="1" step="0.05"></label>
+    <label for="su-mode" title="Field-relative: every car is rated against its own season's field (fair fight). Absolute: cars keep their era's real speed.">Car pace<select id="su-mode"><option value="relative">Field-relative (fair fight)</option><option value="absolute">Absolute (real era speed)</option></select></label>
+    <label for="su-grid">Grid<select id="su-grid"><option value="quali">Simulated qualifying</option><option value="fixed">Order as listed</option></select></label>
+    <label for="su-seed">Seed<input id="su-seed" type="number" min="1"></label>
+  </div>
+  <div class="su-bar">
+    <strong id="su-count"></strong>
+    <button class="btn" id="su-add">Add car</button>
+    <span class="grp"><select id="su-fillyear" aria-label="Season line-up to load"></select><button class="btn" id="su-fill">Load line-up</button></span>
+    <button class="btn" id="su-shuffle" title="Shuffle the cars between the drivers">Shuffle cars</button>
+    <span class="grp"><button class="btn" id="su-random" title="Random drivers in random cars, no driver twice">Random field</button>
+      <label class="inline" for="su-minseasons" title="Only pick drivers with at least this many seasons in the data">min seasons
+        <input id="su-minseasons" type="number" min="1" max="20" value="1" style="width:56px"></label></span>
+    <button class="btn" id="su-clear">Clear</button>
+  </div>
+  <details class="su-cfg su-fb" id="su-fb"><summary>Field builder: filter drivers, choose seasons and cars, build the grid</summary>
+    <div class="fb-grid">
+      <label for="fb-from">Era from<input id="fb-from" type="number" min="1900" max="2026" value="1950"></label>
+      <label for="fb-to">to<input id="fb-to" type="number" min="1900" max="2026" value="2024"></label>
+      <label for="fb-nat">Nationality<select id="fb-nat"></select></label>
+      <label for="fb-pool">Drivers<select id="fb-pool"><option value="all">All</option><option value="f1">Championship (1950+)</option><option value="prewar">Pre-war (1906–1940)</option></select></label>
+      <label for="fb-minsea" title="Only drivers with at least this many seasons in the range">Min seasons<input id="fb-minsea" type="number" min="1" max="30" value="1"></label>
+      <label for="fb-top" title="Only the best N drivers in the range (by their peak pace in it); 0 = no limit">Best N only<input id="fb-top" type="number" min="0" max="2000" value="0"></label>
+      <label for="fb-name">Name contains<input id="fb-name" placeholder="e.g. Hill"></label>
+      <label for="fb-season">Season<select id="fb-season"><option value="peak">Peak in the range</option><option value="peakall">Peak of career</option><option value="first">First in the range</option><option value="last">Last in the range</option><option value="random">Random in the range</option></select></label>
+      <label for="fb-car">Car<select id="fb-car"><option value="own">Their own car that season</option><option value="one">One car for everyone</option><option value="randera">Random car from the era range</option><option value="best">Fastest car of that season</option><option value="toppct">Random car from the fastest % of the era range</option><option value="botpct">Random car from the slowest % of the era range</option><option value="careerbest">Their best car of their career</option><option value="anybest">Fastest car of any season they raced</option><option value="keep">Keep current cars</option></select></label>
+      <label for="fb-toppct" title="For &quot;Random car from the fastest / slowest %&quot;: the share of the era range's cars to pick from">Fastest / slowest %<input id="fb-toppct" type="number" min="1" max="100" value="20"></label>
+      <label for="fb-onecar" title="For &quot;One car for everyone&quot;">The one car<input id="fb-onecar" list="dl-cars" placeholder="e.g. 1988 McLaren"></label>
+      <label for="fb-n">Field size<input id="fb-n" type="number" min="2" max="60" value="20"></label>
+      <label for="fb-order">Pick<select id="fb-order"><option value="best">Best first</option><option value="random">At random</option></select></label>
+    </div>
+    <div class="su-bar">
+      <span id="fb-match" class="muted small"></span><span class="spacer"></span>
+      <button class="btn primary" id="fb-build" title="Replace the grid with drivers matching the filters">Build field</button>
+      <button class="btn" id="fb-addm" title="Add matching drivers not yet on the grid">Add matching</button>
+      <button class="btn" id="fb-carsonly" title="Give the drivers already on the grid new cars by the Car rule (drivers and seasons stay)">Apply cars only</button>
+    </div>
+    <div class="su-bar"><span class="muted small">Presets:</span>
+      <button class="btn" data-preset="greats" title="The 20 best drivers of all time, each at their peak in their own car">All-time greats</button>
+      <button class="btn" data-preset="decades" title="The best 3 drivers of every decade, at their peak in their own car">Best of each decade</button>
+      <button class="btn" data-preset="onecar" title="The 20 best drivers in the range, all in the one car chosen above (or the fastest car of the range)">One-car shootout</button>
+      <button class="btn" data-preset="nations" title="The best 2 drivers of each country in the range">Nations cup</button>
+      <button class="btn" data-preset="prewar" title="The best 20 pre-war drivers in their own cars">Golden era</button>
+      <button class="btn" data-preset="carswap" title="The 20 best drivers in the range, each in a random car from it">Random cars</button>
+    </div>
+    <div class="su-bar"><span class="muted small">Grid tools:</span>
+      <button class="btn" data-tool="own" title="Every driver in their own car of the season shown">Own cars</button>
+      <button class="btn" data-tool="peak" title="Every driver at their best season">Peak seasons</button>
+      <button class="btn" data-tool="onecar" title="Every driver in the one car chosen above">All in one car</button>
+      <button class="btn" data-tool="bestcar" title="Every driver in the fastest car of their season">Fastest cars</button>
+      <button class="btn" data-tool="sort" title="Order the grid by driver pace (for &quot;Order as listed&quot; grids)">Sort by pace</button>
+      <button class="btn" data-tool="reverse" title="Reverse the grid order">Reverse</button>
+      <button class="btn" data-tool="shufd" title="Shuffle the grid order">Shuffle order</button>
+      <button class="btn" data-tool="dedupe" title="Remove repeated drivers">Remove repeats</button>
+      <button class="btn" data-tool="trim" title="Keep the first N (field size above)">Trim to size</button>
+    </div>
+  </details>
+  <div class="su-table">
+    <table><thead><tr><th>#</th><th></th><th>Driver</th><th title="Which season's form the driver brings">Form</th><th>Car</th><th title="Your cars: you make the strategy calls">Yours</th><th></th></tr></thead>
+    <tbody id="su-entries"></tbody></table>
+  </div>
+  <datalist id="dl-drivers"></datalist><datalist id="dl-cars"></datalist>
+  <details class="su-cfg"><summary>Saved setups and import / export</summary>
+    <div class="su-bar">
+      <button class="btn" id="su-save">Save setup</button>
+      <select id="su-saved" aria-label="Saved setups"></select>
+      <button class="btn" id="su-load">Load</button><button class="btn" id="su-del">Delete</button>
+      <button class="btn" id="su-export">Export JSON</button><button class="btn" id="su-copy">Copy</button>
+      <button class="btn" id="su-import">Import JSON</button>
+      <label class="btn file" for="su-file">Import file<input type="file" id="su-file" accept=".json,application/json" hidden></label>
+    </div>
+    <textarea id="su-json" rows="5" spellcheck="false" aria-label="Setup JSON" placeholder="Exported setup JSON appears here; paste one here to import it."></textarea>
+  </details>
+  <div class="su-foot"><span id="su-msg" role="status"></span><button class="btn primary" id="su-run">Run race</button></div>
+</dialog>
+<dialog id="season" aria-label="Season">
+  <div class="su-head"><h2 id="se-title">Season</h2><button class="btn" id="se-close" aria-label="Close season">✕</button></div>
+  <div class="su-bar" id="se-new">
+    <span>The field and rules year come from the current setup; your cars are the ones marked <b>Yours</b> there.</span>
+    <label class="inline" for="se-calyear">Calendar <select id="se-calyear"></select></label>
+    <label class="inline" for="se-rounds" title="Use fewer rounds for a short season (spread across the calendar)">Rounds <input id="se-rounds" type="number" min="1" max="25" value="10" style="width:56px"></label>
+    <label class="inline" for="se-seed">Seed <input id="se-seed" type="number" min="1" placeholder="random" style="width:80px"></label>
+    <button class="btn primary" id="se-start">Start season</button>
+  </div>
+  <div class="su-bar" id="se-run" hidden>
+    <button class="btn primary" id="se-watch">Watch next round</button>
+    <button class="btn" id="se-sim" title="Simulate the next round without watching it">Sim next round</button>
+    <button class="btn" id="se-simall">Sim the rest</button>
+    <span id="se-info"></span><span class="spacer"></span>
+    <button class="btn" id="se-end">End season</button>
+  </div>
+  <div id="se-body"></div>
+  <div class="su-foot"><span id="se-msg" role="status"></span></div>
+</dialog>
+<dialog id="career" aria-label="Career">
+  <div class="cr-head"><h2 id="cr-title">Career</h2><span class="chip" id="cr-money"></span><span class="spacer"></span><span id="cr-actions"></span>
+    <button class="btn" data-act="close" aria-label="Close career">✕</button></div>
+  <nav class="cr-tabs" id="cr-tabs"></nav>
+  <div id="cr-body"></div>
+  <div class="su-foot"><span id="cr-msg" role="status"></span></div>
+</dialog>
+<dialog id="real" aria-label="Real Seasons">
+  <div class="cr-head"><h2 id="rs-title">Real Seasons</h2><span class="chip" id="rs-money"></span><span class="spacer"></span><span id="rs-actions"></span>
+    <button class="btn" data-act="close" aria-label="Close Real Seasons">✕</button></div>
+  <nav class="cr-tabs" id="rs-tabs"></nav>
+  <div id="rs-body"></div>
+  <div class="su-foot"><span id="rs-msg" role="status"></span></div>
+</dialog>
+<script type="module" src="app.js"></script>
+
+</body></html>
