@@ -3,7 +3,7 @@
 import * as K from "./career.js";
 import { layoutFor } from "./sim/db.js";
 import { carThumb, helmetThumb } from "./thumbs.js";
-import { unpackCareer, importArchive, tally, seasonGrid, cellHTML } from "./archive.js";
+import { unpackCareer, importArchive, tally, sortTable, driverCols, seasonGrid, cellHTML } from "./archive.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
@@ -103,6 +103,7 @@ export class CareerUI {
       case "hseason": this.hOpen = this.hOpen === Number(ds.s) ? null : Number(ds.s); break;
       case "htier": this.hTier = Number(ds.t); break;
       case "attoggle": this.atOpen = !this.atOpen; return;
+      case "atsort": this.atSort = { ...this.atSort, [ds.t]: { k: ds.k, dir: Number(ds.dir) } }; break;
       case "tier": this.tier = Number(ds.t); break;
       case "pick": this.pick = ds.ref; break;
       case "reseed": this.newSeed = 1 + Math.floor(Math.random() * 99999); this.pick = null; break;
@@ -580,11 +581,11 @@ export class CareerUI {
     for (const h of C.history) { const d = h.tables[0]?.[0]?.d; if (d != null) titles.set(String(d), (titles.get(String(d)) ?? 0) + 1); }
     const top = (res) => unpackCareer(res)?.[0] ?? null;
     const races = [...C.history.flatMap((h) => (h.races ?? []).map((r) => top(r.res)).filter(Boolean)), ...C.results.map((r) => r?.[0]).filter(Boolean)];
-    const st = tally(races, titles).slice(0, 40), withRaces = C.history.filter((h) => h.races?.some((r) => r.res)).length;
+    const withRaces = C.history.filter((h) => h.races?.some((r) => r.res)).length;
+    const table = sortTable(tally(races, titles), driverCols((d) => this.hn(d), (d) => this.dn(d)), this.atSort?.d, { id: "d" });
     return `<details class="cr-hedit" ${this.atOpen ? "open" : ""}><summary data-act="attoggle">All-time records (Tier 1)</summary>
-      <p class="muted small">Tier 1 races: ${races.length} (${withRaces} of ${C.history.length} finished seasons have race results${C.results.some(Boolean) ? ", plus this season so far" : ""}); titles = Tier 1 champions of every season.</p>
-      <table class="cr-t"><thead><tr><th>#</th><th>Driver</th><th>Titles</th><th>Wins</th><th>Podiums</th><th>Poles</th><th>Starts</th><th>Points</th></tr></thead><tbody>${st.map((s, k) =>
-        `<tr><td class="n">${k + 1}</td><td>${this.hn(s.d)}</td><td class="n b">${s.titles || ""}</td><td class="n">${s.wins || ""}</td><td class="n">${s.podiums || ""}</td><td class="n">${s.poles || ""}</td><td class="n">${s.starts}</td><td class="n">${s.pts}</td></tr>`).join("")}</tbody></table></details>`;
+      <p class="muted small">Tier 1 races: ${races.length} (${withRaces} of ${C.history.length} finished seasons have race results${C.results.some(Boolean) ? ", plus this season so far" : ""}); titles = Tier 1 champions of every season. Click a column to sort by it.</p>
+      ${table}</details>`;
   }
   historyView() {
     const C = this.C;

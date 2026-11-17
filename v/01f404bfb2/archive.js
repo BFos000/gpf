@@ -78,6 +78,59 @@ export function tally(races, titles = new Map()) {
   for (const [d, n] of titles) get(d).titles += n;
   return [...m.values()].sort((a, b) => b.titles - a.titles || b.wins - a.wins || b.podiums - a.podiums || b.pts - a.pts);
 }
+/** constructors from Real Seasons rows {team, pos, fin, pts, grid}; titles: Map team -> count. Races = rounds the team
+ *  started, 1-2 = its cars first and second (finishers), the rest summed over its cars */
+export function tallyTeams(races, titles = new Map()) {
+  const m = new Map();
+  const get = (t) => m.get(t) ?? m.set(t, { t, races: 0, wins: 0, onetwo: 0, podiums: 0, poles: 0, pts: 0, titles: 0 }).get(t);
+  for (const rows of races) {
+    const seen = new Set();
+    for (const x of rows) {
+      const s = get(x.team);
+      if (!seen.has(x.team)) { seen.add(x.team); s.races++; }
+      s.pts += x.pts ?? 0;
+      if (x.fin && x.pos === 1) s.wins++;
+      if (x.fin && x.pos <= 3) s.podiums++;
+      if (x.grid === 1) s.poles++;
+    }
+    const p1 = rows.find((x) => x.fin && x.pos === 1), p2 = rows.find((x) => x.fin && x.pos === 2);
+    if (p1 && p2 && p1.team === p2.team) get(p1.team).onetwo++;
+  }
+  for (const [t, n] of titles) get(t).titles += n;
+  return [...m.values()].sort((a, b) => b.titles - a.titles || b.wins - a.wins || b.podiums - a.podiums || b.pts - a.pts);
+}
+/** a table sortable by any column. rows: already in the default order. cols: [{k, label, cell(s) -> td html,
+ *  val?(s) (sort key, default s[k]), text? (sorts A to Z first)}]. sort: {k, dir} or null (the default order).
+ *  Header clicks fire data-act="atsort" with data-t = id, data-k = the column, data-dir = the order to switch to. */
+export function sortTable(rows, cols, sort, { id, rowCls = () => "", limit = 40 } = {}) {
+  const col = sort && cols.find((c) => c.k === sort.k);
+  let list = rows;
+  if (col) {
+    const v = col.val ?? ((s) => s[col.k]);
+    list = rows.map((s, i) => [s, v(s), i]).sort((a, b) => {
+      const c = col.text ? String(a[1]).localeCompare(String(b[1])) : a[1] - b[1];
+      return c * sort.dir || a[2] - b[2];                      // ties keep the default order
+    }).map((x) => x[0]);
+  }
+  const head = cols.map((c) => {
+    const on = col === c, next = on ? -sort.dir : (c.text ? 1 : -1);
+    const arrow = on ? (sort.dir > 0 ? " ▲" : " ▼") : "";
+    return `<th class="srt${on ? " on" : ""}" data-act="atsort" data-t="${id}" data-k="${c.k}" data-dir="${next}" title="Sort by ${c.label.toLowerCase()}">${c.label}${arrow}</th>`;
+  }).join("");
+  const body = list.slice(0, limit).map((s, k) => `<tr class="${rowCls(s)}"><td class="n">${k + 1}</td>${cols.map((c) => c.cell(s)).join("")}</tr>`).join("");
+  const more = list.length > limit ? `<p class="muted small">Top ${limit} of ${list.length} by this column.</p>` : "";
+  return `<table class="cr-t"><thead><tr><th>#</th>${head}</tr></thead><tbody>${body}</tbody></table>${more}`;
+}
+/** the driver records' columns (both modes); name(d) -> html, text(d) -> plain name for sorting */
+export const driverCols = (name, text) => [
+  { k: "d", label: "Driver", text: true, val: (s) => text(s.d), cell: (s) => `<td>${name(s.d)}</td>` },
+  { k: "titles", label: "Titles", cell: (s) => `<td class="n b">${s.titles || ""}</td>` },
+  { k: "wins", label: "Wins", cell: (s) => `<td class="n">${s.wins || ""}</td>` },
+  { k: "podiums", label: "Podiums", cell: (s) => `<td class="n">${s.podiums || ""}</td>` },
+  { k: "poles", label: "Poles", cell: (s) => `<td class="n">${s.poles || ""}</td>` },
+  { k: "starts", label: "Starts", cell: (s) => `<td class="n">${s.starts}</td>` },
+  { k: "pts", label: "Points", cell: (s) => `<td class="n">${s.pts}</td>` },
+];
 /** a season's results grid: drivers (or entries) by points, one cell per round */
 export function seasonGrid(races, keyOf = (x) => x.d) {
   const m = new Map();

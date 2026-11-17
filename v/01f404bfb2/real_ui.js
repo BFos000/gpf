@@ -5,7 +5,7 @@ import * as R from "./real.js";
 import { UPGRADES, upgradeEffect, SKILL_UP, skillCost, carRating, index as kIndex, iconicOf, SKILL_MAX } from "./career.js";
 import { simulateRace } from "./sim/race.js";
 import { carThumb, helmetThumb } from "./thumbs.js";
-import { unpackReal, importArchive, tally, seasonGrid, cellHTML } from "./archive.js";
+import { unpackReal, importArchive, tally, tallyTeams, sortTable, driverCols, seasonGrid, cellHTML } from "./archive.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
@@ -80,6 +80,7 @@ export class RealUI {
       case "newmode": this.n.mode = ds.m; break;
       case "lvtoggle": this.lvOpen = !this.lvOpen; return;
       case "attoggle": this.atOpen = !this.atOpen; return;
+      case "atsort": this.atSort = { ...this.atSort, [ds.t]: { k: ds.k, dir: Number(ds.dir) } }; break;
       case "hseason": this.hOpen = this.hOpen === Number(ds.y) ? null : Number(ds.y); break;
       case "fixres": case "keepres": {
         const k = (this.fixes ?? []).findIndex((x) => x.r === Number(ds.r));
@@ -458,14 +459,35 @@ export class RealUI {
       ${missing ? `<p class="muted small">${missing} round${missing === 1 ? "" : "s"} of this season weren't in any save (·); the totals here leave them out.</p>` : ""}`;
   }
   allTimeHTML() {
-    const S = this.S, titles = new Map();
-    for (const h of S.history) if (h.champion) titles.set(h.champion.d, (titles.get(h.champion.d) ?? 0) + 1);
+    const S = this.S, titles = new Map(), tTitles = new Map();
+    for (const h of S.history) {
+      if (h.champion) titles.set(h.champion.d, (titles.get(h.champion.d) ?? 0) + 1);
+      if (h.teams) tTitles.set(h.teams.team, (tTitles.get(h.teams.team) ?? 0) + 1);
+    }
     const races = [...S.history.flatMap((h) => (h.races ?? []).map((r) => unpackReal(r.res)).filter(Boolean)), ...S.results.filter(Boolean)];
-    const st = tally(races, titles).slice(0, 40), withRaces = S.history.filter((h) => h.races?.some((r) => r.res)).length;
+    const withRaces = S.history.filter((h) => h.races?.some((r) => r.res)).length;
+    // a constructor's name and car: this season's if it is on the grid, else the last season it raced in
+    const last = (ref, key) => { for (let k = S.history.length - 1; k >= 0; k--) { const v = S.history[k][key]?.[ref]; if (v) return v; } return null; };
+    const tname = (ref) => (S.teams.some((t) => t.ref === ref) ? this.tn(ref) : last(ref, "teamNames") ?? this.tn(ref));
+    const tcar = (ref) => this.carOf(ref) ?? last(ref, "cars");
+    const sort = this.atSort ?? {};
+    const drivers = sortTable(tally(races, titles), driverCols((d) => this.hn(d), (d) => this.dn(d)), sort.d,
+      { id: "d", rowCls: (s) => (s.d === this.myDriver ? "mine" : "") });
+    const teams = sortTable(tallyTeams(races, tTitles), [
+      { k: "t", label: "Constructor", text: true, val: (s) => tname(s.t), cell: (s) => `<td><span class="th-name">${carThumb(tcar(s.t))}${esc(tname(s.t))}</span></td>` },
+      { k: "titles", label: "Titles", cell: (s) => `<td class="n b">${s.titles || ""}</td>` },
+      { k: "wins", label: "Wins", cell: (s) => `<td class="n">${s.wins || ""}</td>` },
+      { k: "onetwo", label: "1-2s", cell: (s) => `<td class="n">${s.onetwo || ""}</td>` },
+      { k: "podiums", label: "Podiums", cell: (s) => `<td class="n">${s.podiums || ""}</td>` },
+      { k: "poles", label: "Poles", cell: (s) => `<td class="n">${s.poles || ""}</td>` },
+      { k: "races", label: "Races", cell: (s) => `<td class="n">${s.races}</td>` },
+      { k: "pts", label: "Points", cell: (s) => `<td class="n">${s.pts}</td>` },
+    ], sort.t, { id: "t", rowCls: (s) => (s.t === this.myTeamNow ? "mine" : "") });
     return `<details class="cr-hedit" ${this.atOpen ? "open" : ""}><summary data-act="attoggle">All-time records</summary>
-      <p class="muted small">${races.length} races (${withRaces} of ${S.history.length} finished seasons have race results${S.results.some(Boolean) ? ", plus this season so far" : ""}); titles from every season.</p>
-      <table class="cr-t"><thead><tr><th>#</th><th>Driver</th><th>Titles</th><th>Wins</th><th>Podiums</th><th>Poles</th><th>Starts</th><th>Points</th></tr></thead><tbody>${st.map((s, k) =>
-        `<tr class="${s.d === this.myDriver ? "mine" : ""}"><td class="n">${k + 1}</td><td>${this.hn(s.d)}</td><td class="n b">${s.titles || ""}</td><td class="n">${s.wins || ""}</td><td class="n">${s.podiums || ""}</td><td class="n">${s.poles || ""}</td><td class="n">${s.starts}</td><td class="n">${s.pts}</td></tr>`).join("")}</tbody></table></details>`;
+      <p class="muted small">${races.length} races (${withRaces} of ${S.history.length} finished seasons have race results${S.results.some(Boolean) ? ", plus this season so far" : ""}); titles from every season. Click a column to sort by it.</p>
+      <h4>Drivers</h4>${drivers}
+      <h4>Constructors</h4>${teams}
+      <p class="muted small">Constructors: races = rounds with at least one car; podiums, poles and points add up all its cars; 1-2s = its cars first and second.</p></details>`;
   }
   historyView() {
     const S = this.S;

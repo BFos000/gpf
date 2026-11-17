@@ -86,7 +86,9 @@ function loadRealRace() {
   store.set("race", race.id);
   run();
 }
+let runId = 0;
 async function run(keep = false) {
+  const my = ++runId;                                 // a newer run() started while this one loaded wins
   const keepT = keep ? t : null, keepPlaying = playing, keepFocus = focus;
   if (!keep) cfg.calls = [];
   const seedIn = Math.max(1, Math.floor(Number($("seed").value) || cfg.seed || 1));
@@ -98,9 +100,11 @@ async function run(keep = false) {
   $("loading").hidden = false; $("loading").textContent = "Simulating…";
   raceInfo = null;                                    // nothing records until this race is built
   const track = await trackFor(cfg.circuit, cfg.layout);
+  if (my !== runId) return;
   if (!track) { $("loading").textContent = "No track map for this layout yet."; return; }
   const entries = cfg.entries;
   await sprites.ready([...new Set(entries.map((e) => sprites.car(e.car)?.sheet).filter(Boolean)), "helmets.webp"]);
+  if (my !== runId) return;
   const out = simulateRace(db, { seed: cfg.seed, year: cfg.year, circuit: cfg.circuit, layout: cfg.layout, laps: cfg.laps,
                                  wet: cfg.wet, grid: cfg.grid, mode: cfg.mode, entries, calls: cfg.calls ?? [],
                                  relReliability: !!cfg.relReliability }, track);
@@ -140,6 +144,8 @@ function seasonChip() {
 const isMine = (i) => !!cfg.entries[i]?.mine;
 let lastPw = "";
 function updatePitWall(snap) {
+  // while the next race loads, the old one stays on screen with raceInfo already cleared (and cfg already the new race's)
+  if (!raceInfo) return;
   const c = pb.cars[focus], s = snap.byCar[focus];
   const mine = isMine(focus);
   $("pw-badge").textContent = mine ? "YOUR CAR" : "CPU";
@@ -363,13 +369,19 @@ function render(force = false) {
 }
 let lastFrame = null;
 function frame(ts) {
-  if (lastFrame !== null && playing && pb) {
-    t = Math.min(pb.tEnd + 20, t + ((ts - lastFrame) / 1000) * speed);
-    if (t >= pb.tEnd + 20) setPlaying(false);
+  // the next frame is always scheduled: one throw here used to end the loop, leaving the race frozen on its grid
+  try {
+    if (lastFrame !== null && playing && pb) {
+      t = Math.min(pb.tEnd + 20, t + ((ts - lastFrame) / 1000) * speed);
+      if (t >= pb.tEnd + 20) setPlaying(false);
+    }
+    lastFrame = ts;
+    render();
+  } catch (e) {
+    console.error("frame:", e);
+  } finally {
+    requestAnimationFrame(frame);
   }
-  lastFrame = ts;
-  render();
-  requestAnimationFrame(frame);
 }
 
 // ---------- controls ----------
