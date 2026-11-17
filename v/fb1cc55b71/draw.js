@@ -86,6 +86,9 @@ export function autoLivery(kit, L, car, driverId, ev = null) {
 }
 
 const carYear = (id) => Number(String(id).split("_").pop()) || null;
+// the driver's helmet against a car drawn w px wide: 1.25 x the car's helmet size, relatively bigger as the car
+// shrinks so it stays recognisable (every view that draws a car with its driver: the strip, the thumbnails)
+export const helmetScaleFor = (w) => 1.25 * Math.min(1.9, Math.max(1, 220 / w));
 // front-engined (to 1960), cigar (to 1967), winged wedge (1968+; sidepods 1977+). Nose to the right.
 // Returns the helmet centre and size [x, y, d], placed as on the sprites.
 function drawVintage(ctx, x, yg, W, colour, year) {
@@ -206,6 +209,13 @@ export class Sprites {
   ready(names) { return Promise.all(names.map((n) => new Promise((ok) => { this.sheet(n); const im = this.img.get(n); if (im.complete) ok(); else { im.onload = ok; im.onerror = ok; } }))); }
   car(id) { return this.meta.cars[id] ?? null; }
   // height (px) of a car drawn w px wide (pre-war cars are drawn smaller)
+  // how far the driver's helmet rises above the top of a car drawn w px wide (0 if it stays inside the sprite)
+  helmetRise(id, w) {
+    const c = this.car(id);
+    if (!c || this.liveryShape(id)) return 0.12 * w * helmetScaleFor(w) / 2.375;
+    const k = String(id).startsWith("ge_") ? PREWAR_SCALE : 1, s = (w * k) / c.w;
+    return Math.max(0, 0.8 * c.hd * s * helmetScaleFor(w) / k - c.hy * s);
+  }
   drawnHeight(id, w) {
     const L = this.liveryShape(id);
     if (L) return (L.h / L.w) * w * (carYear(id) < 1950 ? PREWAR_SCALE : 1);
@@ -238,7 +248,7 @@ export class Sprites {
   }
   customHelmet(driverId) { const c = this.custom?.get(String(driverId)); return c && c.im.complete && c.im.naturalWidth ? c : null; }
   // draw a car side-on: width w px, left edge x, ground line y (wheels touch it)
-  drawCar(ctx, carId, driverId, x, yGround, w, colour, alpha = 1, helmetScale = 1.25) {
+  drawCar(ctx, carId, driverId, x, yGround, w, colour, alpha = 1, helmetScale = helmetScaleFor(w)) {
     const lv = this.liverySpec(carId, driverId), yr = carYear(carId);
     if (lv && yr) {                                     // a livery-kit car: the year picks the shape (pre-war 20% smaller)
       if (yr < 1950) { x += w * (1 - PREWAR_SCALE) / 2; w *= PREWAR_SCALE; helmetScale /= PREWAR_SCALE; }
@@ -355,8 +365,9 @@ export class Sprites {
       const car = cv.dataset.car, col = colourOf(car) ?? "#888888";
       const ratio = (this.drawnHeight(car, 100) || 22) / 100;
       let w = W - 2;
-      if (ratio * w > H * 0.74) w = (H * 0.74) / ratio;     // room for the helmet above the cockpit
-      this.drawCar(ctx, car, d, (W - w) / 2, H - 1, w, col, 1, 1.25);
+      // the car and the helmet above its cockpit fit the height (helmet sized as on the strip)
+      for (let it = 0; it < 40 && ratio * w + this.helmetRise(car, w) > H - 1.5; it++) w *= 0.97;
+      this.drawCar(ctx, car, d, (W - w) / 2, H - 1, w, col, 1);
     } else {
       const s = Math.min(W, H / 0.9), y = cv.dataset.y ? Number(cv.dataset.y) : null;
       this.drawHelmet(ctx, d, (W - s) / 2, H, s, colourOf(null) ?? "#888888", y);
@@ -659,7 +670,7 @@ export class PaperdollStrip {
     const sepK = 1 - OVERLAP;
     if (near.length * carW * sepK > w * 1.15) carW = Math.max(CAR_FLOOR_PX, (w * 1.15) / near.length / sepK);
     // helmets get relatively bigger as the car sprite shrinks, so they stay recognisable
-    const helmetScale = 1.25 * Math.min(1.9, Math.max(1, 220 / carW));
+    const helmetScale = helmetScaleFor(carW);
     const minSep = carW * sepK;
     for (const n of near) n.x = w / 2 + n.g * pxs;
     const fk = near.findIndex((n) => n.s.c.i === opts.focus);
