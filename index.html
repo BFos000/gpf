@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="v/01f404bfb2/">
+<base href="v/a0028b787c/">
 <title>Fantasy GP</title>
 <meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
 <meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
@@ -184,6 +184,7 @@ dialog#career, dialog#real { width: min(1280px, calc(100vw - 24px)); height: cal
 .cr-up .btn, .cr-t .btn { padding: 2px 8px; font-size: 12px; }
 .cr-t { width: 100%; border-collapse: collapse; font-size: 13px; }
 .cr-t th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 500; padding: 4px 6px; position: sticky; top: 0; background: var(--panel); }
+#feed li.nar span:last-child { font-style: italic; color: var(--fg); }
 .cr-t th.srt { cursor: pointer; user-select: none; } .cr-t th.srt:hover, .cr-t th.srt.on { color: var(--fg); }
 .cr-t td { padding: 3px 6px; border-top: 1px solid var(--line); }
 .cr-t td.n { font-family: var(--font-data); text-align: right; color: var(--muted); } .cr-t td.b { color: var(--fg); font-weight: 600; }
@@ -308,6 +309,7 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
   <div class="top">
     <div class="brand">Fantasy <b>GP</b></div>
     <select id="race" aria-label="Load a real race"></select>
+    <label class="inline" for="realrep"><input type="checkbox" id="realrep"> Real race</label>
     <button class="btn" id="opensetup" title="Choose circuit, rules year, drivers and cars">Setup…</button>
     <button class="btn" id="openseason" title="Run a championship with this field">Season…</button>
     <button class="btn" id="opencareer" title="Career mode: run a constructor through a tiered championship">Career…</button>
@@ -316,12 +318,13 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
     <button class="btn" id="reseed" title="Run again with a new random seed">New seed</button>
     <button class="btn primary" id="go">Run race</button>
     <span class="spacer"></span>
+    <span class="chip" id="histchip" hidden title="Real race: every lap from the timing data. Take control of a car and make a call to race on from that lap."></span>
     <span class="chip" id="wx"></span>
     <span class="chip" id="seasonchip" hidden></span>
     <button class="btn primary" id="careerchip" hidden>Back to career</button>
     <button class="btn primary" id="realchip" hidden>Back to Real Seasons</button>
     <span class="chip" id="result"></span>
-    <span class="chip" title="Data sources: race results and lap times from the Ergast database; 1950-80 entries and qualifying from F1DB (CC BY 4.0); pre-war (1906-40) Grand Prix results from The Golden Era of GP Racing (goldenera.fi) by Leif Snellman and Hans Etzrodt; circuit outlines from bacinger/f1-circuits (MIT); track layouts © OpenStreetMap contributors (ODbL) and F1DB layout drawings (CC BY 4.0); weather from Open-Meteo (CC BY 4.0); track heights from the Copernicus DEM GLO-30 (© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; all rights reserved) and the AWS Terrain Tiles (Mapzen; SRTM, USGS 3DEP, UK Environment Agency and other national sources), with SRTM (NASA) where Copernicus is not public.">Data sources</span>
+    <span class="chip" title="Data sources: race results and lap times from the Ergast database; 1950-80 entries and qualifying from F1DB (CC BY 4.0); pre-war (1906-40) Grand Prix results, lap standings and the race-replay quotes from The Golden Era of GP Racing (goldenera.fi) by Leif Snellman and Hans Etzrodt; circuit outlines from bacinger/f1-circuits (MIT); track layouts © OpenStreetMap contributors (ODbL) and F1DB layout drawings (CC BY 4.0); weather from Open-Meteo (CC BY 4.0); track heights from the Copernicus DEM GLO-30 (© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; all rights reserved) and the AWS Terrain Tiles (Mapzen; SRTM, USGS 3DEP, UK Environment Agency and other national sources), with SRTM (NASA) where Copernicus is not public.">Data sources</span>
   </div>
 
   <section class="panel tower" aria-label="Timing tower">

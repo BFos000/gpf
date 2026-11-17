@@ -8,7 +8,9 @@ Names of drivers, teams and races are used to describe historical results.
 - **1950–80 entries and qualifying, circuit layout drawings:** F1DB (https://github.com/f1db/f1db), CC BY 4.0.
 - **Pre-war Grand Prix racing (1906–1940):** *The Golden Era of GP Racing* (https://www.goldenera.fi) by Leif Snellman
   and Hans Etzrodt. Results, cars and entries were taken from their race reports; the driver and car ratings in the
-  game are computed from them.
+  game are computed from them. The historical race replays rebuild pre-war races from their lap standings, pit
+  stops and fastest laps, and the replay's race feed quotes short passages of their race reports, marked
+  "(goldenera.fi)".
 - **Circuit outlines:** bacinger/f1-circuits (https://github.com/bacinger/f1-circuits), MIT licence.
 - **Track layouts:** © OpenStreetMap contributors (https://www.openstreetmap.org/copyright), Open Database Licence
   (ODbL 1.0). The track geometry derived from it is available under the ODbL on request.
