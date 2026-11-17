@@ -10,7 +10,7 @@ import { unpackReal, importArchive, tally, tallyTeams, sortTable, driverCols, se
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const TABS = [["overview", "Overview"], ["standings", "Standings"], ["market", "Market"], ["drivers", "Drivers"],
-  ["calendar", "Calendar"], ["history", "History"], ["save", "Save / load"]];
+  ["calendar", "Calendar"], ["history", "History"], ["teamhist", "Team history"], ["save", "Save / load"]];
 const NEW_MODES = [["team", "Run a real team"], ["custom", "Your own team"], ["rdriver", "Be a real driver"], ["me", "Your own driver"]];
 const STORE_KEY = "realSeasons";
 
@@ -435,7 +435,7 @@ export class RealUI {
     const rows = S.calendar.map((c, r) => {
       const res = S.results[r], w = res?.find((x) => x.pos === 1), mine = res?.filter((x) => x.d === this.myDriver || x.team === this.myTeamNow);
       return `<tr class="${S.phase === "season" && r === S.round ? "next" : ""}"><td class="n">${r + 1}</td><td>${esc(c.name)}</td><td class="muted">${esc(c.layout)} · iconic ${iconicOf(db, c.layout)}</td>
-        <td>${w ? this.hn(w.d) : ""}</td><td>${mine?.length ? mine.map((x) => x.fin ? `P${x.pos}` : "DNF").join(", ") : ""}</td><td>${S.replays?.[r] ? `<button class="btn" data-act="replay" data-r="${r}">Replay</button>` : ""}</td></tr>`;
+        <td>${w ? `<span class="th-name">${carThumb(this.carOf(w.team), w.d)}${esc(this.dn(w.d))}</span>` : ""}</td><td>${mine?.length ? mine.map((x) => x.fin ? `P${x.pos}` : "DNF").join(", ") : ""}</td><td>${S.replays?.[r] ? `<button class="btn" data-act="replay" data-r="${r}">Replay</button>` : ""}</td></tr>`;
     }).join("");
     const fixes = (this.fixes ?? []).filter((f) => S.results[f.r]).map((f) => {
       const win = (rows) => rows.find((x) => x.pos === 1), mineOf = (rows) => rows.filter((x) => x.d === this.myDriver || x.team === this.myTeamNow).map((x) => x.fin ? `P${x.pos}` : "DNF").join(", ") || "—";
@@ -498,6 +498,37 @@ export class RealUI {
       `<tr><td class="th-cell">${h.champion ? carThumb(h.champion.car ?? R.carIn(this.db, h.champion.team, h.year), h.champion.d) : ""}</td><td class="n">${h.year}</td><td>${h.champion ? `${this.hn(h.champion.d)} <span class="muted">${esc(h.table[0]?.teamName ?? "")} · ${h.champion.pts}</span>` : ""}</td><td><span class="th-name">${h.teams ? carThumb(h.teams.car ?? R.carIn(this.db, h.teams.team, h.year), h.table?.find((x) => x.team === h.teams.team)?.d) : ""}${esc(h.teams?.name ?? "")}</span></td><td class="n">${h.mine ? `P${h.mine}` : "—"}</td>
       <td>${h.races?.some((r) => r.res) ? `<button class="btn" data-act="hseason" data-y="${h.year}">${this.hOpen === h.year ? "Hide" : "Results"}</button>` : `<span class="muted small">not saved</span>`}</td></tr>
       ${this.hOpen === h.year && h.races ? `<tr class="rg-row"><td colspan="6">${this.seasonGridHTML(h)}</td></tr>` : ""}`).join("")}</tbody></table>`;
+  }
+  // one season of the player's team: stored at season end; older seasons rebuilt from their saved races
+  teamSeason(h) {
+    if (h.myTeam) return h.myTeam;
+    const races = (h.races ?? []).map((r) => unpackReal(r.res));
+    const base = { ...this.S, contracts: {} };
+    if (races.some(Boolean)) {
+      const m = R.myTeamSeason({ ...base, results: races });
+      return m && { ...m, name: h.teamNames?.[m.team] ?? m.name, car: h.cars?.[m.team] ?? m.car, partial: races.some((r) => !r) };
+    }
+    const team = this.S.mode === "team" ? this.S.player.team : null;   // no races kept: the top-10 table is all there is
+    if (!team) return null;
+    return { team, name: h.teamNames?.[team] ?? this.tn(team), car: h.cars?.[team] ?? null, pos: h.mine, wins: null, partial: true,
+             drivers: (h.table ?? []).map((s, i) => ({ ...s, pos: i + 1, wins: null })).filter((s) => s.team === team) };
+  }
+  teamhistView() {
+    const S = this.S;
+    const seasons = [...S.history.map((h) => ({ year: h.year, m: this.teamSeason(h) })),
+      ...(S.results.some(Boolean) ? [{ year: S.year, m: R.myTeamSeason(S), now: true }] : [])].reverse();
+    if (!seasons.length) return `<div class="cr-note">No seasons raced yet.</div>`;
+    const place = (n) => (n ? `P${n}` : "—");
+    const wins = (n) => (n == null ? "" : `${n} win${n === 1 ? "" : "s"}`);
+    const drv = (m, s) => `<div class="th-hist">${carThumb(m.car, s.d)}<span>${esc(this.dn(s.d))}<br><span class="muted small">${place(s.pos)}${s.wins ? ` · ${wins(s.wins)}` : ""}${s.pts != null ? ` · ${s.pts} pts` : ""}</span></span></div>`;
+    const rows = seasons.map(({ year, m, now }) => !m ? `<tr><td class="n">${year}</td><td colspan="4" class="muted">—</td></tr>` :
+      `<tr class="${now ? "next" : ""}"><td class="n">${year}${now ? `<br><span class="muted small">so far</span>` : ""}</td><td><b>${esc(m.name)}</b></td>
+        <td>${m.drivers.length ? m.drivers.map((s) => drv(m, s)).join("") : `<span class="muted">not in the top 10</span>`}</td>
+        <td class="n b">${place(m.pos)}</td><td class="n">${m.wins == null ? "" : m.wins}</td></tr>`).join("");
+    const gaps = seasons.some((s) => s.m?.partial);
+    return `<p class="muted small">${this.S.mode === "team" ? "Your team" : "The team you drove for"}, season by season: each driver in that year's car, with their place in the drivers' championship and their wins.</p>
+      <table class="cr-t"><thead><tr><th>Season</th><th>Team</th><th>Drivers</th><th>Constructors'</th><th>Wins</th></tr></thead><tbody>${rows}</tbody></table>
+      ${gaps ? `<p class="muted small">Some seasons have no saved race results (import them on the History tab); their figures come from the final top 10 only.</p>` : ""}`;
   }
   saveView() {
     return `<div class="cr-note">Real Seasons saves itself in this browser after every action (one game at a time, separate from the career). Download a save file to keep it or move it.</div>

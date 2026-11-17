@@ -558,6 +558,17 @@ export function teamStandings(S) {
   return [...m.values()].sort((a, b) => b.pts - a.pts || b.wins - a.wins);
 }
 
+// the player's team in a season: its drivers (most starts first) with their championship place and wins
+export function myTeamSeason(S, ds = driverStandings(S), ts = teamStandings(S)) {
+  const me = S.mode === "team" ? S.player.team : null, pd = me ? null : playerDriver(S);
+  const team = me ?? ds.find((s) => s.d === pd)?.team ?? S.contracts[pd]?.team ?? null;
+  if (!team) return null;
+  const k = ts.findIndex((s) => s.team === team);
+  return { team, name: teamOf(S, team)?.name ?? team, car: teamOf(S, team)?.car ?? null, pos: k + 1 || null, wins: ts[k]?.wins ?? 0, pts: ts[k]?.pts ?? 0,
+           drivers: ds.map((s, i) => ({ d: s.d, pos: i + 1, pts: s.pts, wins: s.wins, starts: s.starts, team: s.team })).filter((s) => s.team === team)
+             .sort((a, b) => b.starts - a.starts || a.pos - b.pos).map(({ team: _, ...s }) => s) };
+}
+
 // ---------- season end ----------
 export function endSeason(db, S) {
   if (S.phase !== "review") throw new Error("season not finished");
@@ -569,6 +580,7 @@ export function endSeason(db, S) {
   S.history.push({ year: S.year, champion: ds[0] ? { d: ds[0].d, team: ds[0].team, pts: ds[0].pts, car: teamOf(S, ds[0].team)?.car ?? null } : null,
                    teams: ts[0] ? { team: ts[0].team, name: teamName(ts[0].team), pts: ts[0].pts, car: teamOf(S, ts[0].team)?.car ?? null } : null,
                    mine: S.mode === "team" ? (ts.findIndex((s) => s.team === S.player.team) + 1 || null) : (ds.findIndex((s) => s.d === playerDriver(S)) + 1 || null),
+                   myTeam: myTeamSeason(S, ds, ts),
                    table: ds.slice(0, 10).map((s) => ({ d: s.d, team: s.team, teamName: teamName(s.team), pts: s.pts })),
                    // every race of the season (archive.js format) and the season's team names and cars
                    races: S.calendar.map((c, r) => ({ circuit: c.circuit, layout: c.layout, name: c.name, res: packReal(S.results[r]) })),

@@ -550,7 +550,7 @@ export class CareerUI {
         lays.map((l) => `<option value="${esc(l.key)}" ${l.key === cal.layout ? "selected" : ""}>${esc(layName(l))}</option>`).join("") + `</select>`
         : ` <span class="muted small">${esc(layName(cur))}</span>`;
       const sel = (edit ? `<select data-cal="${r}" aria-label="Circuit for round ${r + 1}">${opts.map((c) => `<option value="${c.ref}" ${c.ref === cal.circuit ? "selected" : ""}>${esc(c.name)} (${esc(c.country ?? "")})</option>`).join("")}</select>` : esc(circ.name)) + laySel;
-      return `<tr class="${C.phase === "season" && r === C.round ? "next" : ""}"><td class="n">${r + 1}</td><td>${sel}</td><td>${w1 ? esc(this.dn(w1.d)) : ""}</td><td>${esc(yours)}</td></tr>`;
+      return `<tr class="${C.phase === "season" && r === C.round ? "next" : ""}"><td class="n">${r + 1}</td><td>${sel}</td><td>${w1 ? `<span class="th-name">${carThumb(this.carIdOf(w1.p), w1.d)}${esc(this.dn(w1.d))}</span>` : ""}</td><td>${esc(yours)}</td></tr>`;
     }).join("");
     const mode = C.calMode ?? "fixed";
     const modeBar = `<div class="su-bar"><label class="inline" for="cr-calmode-c">Calendar <select id="cr-calmode-c" ${edit ? "" : "disabled"}>${K.CAL_MODES.map(([m, l]) => `<option value="${m}" ${m === mode ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
