@@ -550,6 +550,25 @@ export class TrackMap {
 }
 
 // ---------- side-on paperdoll strip ----------
+// a car on another lap: drawn into a reusable offscreen canvas, darkened there (source-atop fill, no canvas filter:
+// filters are slow), then copied at the current transform (wheels at y = 0, centred on x = 0). false: no canvas here.
+export function dimCarImpl(self, ctx, s, cw, fill, alpha, helmetScale) {
+  if (typeof document === "undefined" || typeof document.createElement !== "function") return false;
+  const pad = Math.ceil(cw * 0.1), W = Math.ceil(cw) + 2 * pad, H = Math.ceil(cw * 0.7) + pad;
+  let cv = self._dim;
+  if (!cv) cv = self._dim = document.createElement("canvas");
+  if (cv.width < W || cv.height < H) { cv.width = Math.max(cv.width, W); cv.height = Math.max(cv.height, H); }
+  const c = cv.getContext("2d"); if (!c) return false;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = "source-over"; c.globalAlpha = 1;
+  c.clearRect(0, 0, W, H);
+  self.sprites.drawCar(c, s.c.car, s.c.driver, pad, H, cw, fill, 1, helmetScale);
+  c.globalCompositeOperation = "source-atop"; c.fillStyle = "rgba(40,44,50,0.62)"; c.fillRect(0, 0, W, H);
+  c.globalCompositeOperation = "source-over";
+  const a0 = ctx.globalAlpha; ctx.globalAlpha = alpha;
+  ctx.drawImage(cv, 0, 0, W, H, -cw / 2 - pad, -H, W, H);
+  ctx.globalAlpha = a0;
+  return true;
+}
 // The focus car sits in the middle; other cars are placed by their time gap: how long the focus car, at its
 // current lap pace and the track's speed profile, takes to reach where that car is now (so a gap reads the
 // same on a straight as in a hairpin). The zoom (half-window) is held in metres at the lap's mean speed;
@@ -564,6 +583,7 @@ const CAR_MIN_PX = 165, CAR_MIN_FAR_PX = 110, CAR_FLOOR_PX = 80, OVERLAP = 0.3;
 export class PaperdollStrip {
   constructor(cv, sprites) { this.cv = cv; this.sprites = sprites; this.half = 60; this.hit = []; }
   zoomBy(f) { this.half = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, this.half * f)); }
+  dimCar(ctx, s, cw, fill, alpha, helmetScale) { return dimCarImpl(this, ctx, s, cw, fill, alpha, helmetScale); }
   pick(x, y) {                         // topmost car under the point
     for (let k = this.hit.length - 1; k >= 0; k--) { const [x0, y0, x1, y1, i] = this.hit[k]; if (x >= x0 && x <= x1 && y >= y0 && y <= y1) return i; }
     return null;
@@ -758,16 +778,18 @@ export class PaperdollStrip {
       const cw = carW * scale;
       const x = cx - cw / 2, yg = gY(cx) - liftOf(n);
       const col = opts.colour(s.c);
+      // a car on another lap than the focus car (lapped, or lapping it): drawn darkened, with a smaller, greyer label
+      const lapsApart = isF ? 0 : Math.round(s.progress - focus.progress - d / L), other = lapsApart !== 0;
       // on a slope the car tilts with the road (wheels on the ground line)
       ctx.save(); ctx.translate(cx, yg); ctx.rotate(slope(cx, cw * 0.4));
       // contact shadow on the road under the car (fading as it lifts into a passing lane)
       ctx.fillStyle = `rgba(0,0,0,${(0.38 * (1 - Math.min(1, liftOf(n) / 30))).toFixed(2)})`;
       ctx.beginPath(); ctx.ellipse(0, liftOf(n) + 1, cw * 0.47, Math.max(2, cw * 0.022), 0, 0, Math.PI * 2); ctx.fill();
-      this.sprites.drawCar(ctx, s.c.car, s.c.driver, -cw / 2, 0, cw, col.fill, s.idx === null ? 0.5 : 1 - 0.15 * lane, helmetScale);
+      const alpha = s.idx === null ? 0.5 : 1 - 0.15 * lane;
+      if (!other || !this.dimCar(ctx, s, cw, col.fill, alpha * 0.8, helmetScale)) this.sprites.drawCar(ctx, s.c.car, s.c.driver, -cw / 2, 0, cw, col.fill, alpha, helmetScale);
       ctx.restore();
       this.hit.push([x, yg - cw * 0.35, x + cw, yg, s.c.i]);
       if (minSep >= 70 || isF || drawn.length < 8) {
-        const lapsApart = Math.round(s.progress - focus.progress - d / L);
         const g = isF ? "" : lapsApart ? ` ${lapsApart > 0 ? "+" : "−"}${Math.abs(lapsApart)}L` : (() => { const v = rel(focus) - rel(s); return ` ${v >= 0 ? "−" : "+"}${Math.abs(v).toFixed(1)}`; })();
         // labels on two tiers (alternating out from the focus car) so neighbours' labels don't collide
         // (a stacked pair: the upper car's label on the top tier, the road car's label below it)
@@ -775,19 +797,22 @@ export class PaperdollStrip {
         const y = tier ? 50 : 16;
         const room = minSep * 2 - 8;                     // same-tier neighbours are two slots apart
         ctx.textAlign = "center";
-        ctx.font = `700 12px ${css("--font-data")}`;
+        const F1 = other ? `600 10px ${css("--font-data")}` : `700 12px ${css("--font-data")}`, F2 = other ? `500 9px ${css("--font-data")}` : `500 11px ${css("--font-data")}`;
+        ctx.font = F1;
         const no = s.c.no ? `#${s.c.no} ` : "";            // a real race: the car's real number
         const full = `P${s.pos} ${no}${s.c.name ?? ""}${g}`, short = `P${s.pos} ${no}${(s.c.name ?? "").split(" ").at(-1)}${g}`;
         const l1 = ctx.measureText(full).width <= room ? full : short;
         const w1 = ctx.measureText(l1).width;
         const l2 = `${s.c.carYear ?? ""} ${s.c.carName ?? ""}`;
-        ctx.font = `500 11px ${css("--font-data")}`;
-        const tw = Math.max(w1, ctx.measureText(l2).width) + 10;
-        ctx.fillStyle = "rgba(13,16,20,.6)";
-        ctx.fillRect(cx - tw / 2, y - 12, tw, 30);
-        ctx.fillStyle = css("--muted"); ctx.fillText(l2, cx, y + 13);
-        ctx.font = `700 12px ${css("--font-data")}`;
-        ctx.fillStyle = isF ? css("--accent") : css("--fg");
+        ctx.font = F2;
+        const tw = Math.max(w1, ctx.measureText(l2).width) + (other ? 8 : 10);
+        ctx.fillStyle = other ? "rgba(13,16,20,.45)" : "rgba(13,16,20,.6)";
+        ctx.fillRect(cx - tw / 2, y - (other ? 10 : 12), tw, other ? 24 : 30);
+        ctx.fillStyle = css("--muted"); if (other) ctx.globalAlpha = 0.7;
+        ctx.fillText(l2, cx, y + (other ? 11 : 13));
+        ctx.globalAlpha = 1;
+        ctx.font = F1;
+        ctx.fillStyle = isF ? css("--accent") : other ? css("--muted") : css("--fg");
         ctx.fillText(l1, cx, y);
         ctx.textAlign = "left";
       }
