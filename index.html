@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="v/18bdc81522/">
+<base href="v/691cc326d8/">
 <title>Fantasy GP</title>
 <meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
 <meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
@@ -354,6 +354,11 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
       <div class="dbg-pop"><b>Debug</b>
         <label for="dbg-laps">Race distance <input id="dbg-laps" type="number" min="1" max="400" step="1"> laps</label>
         <button class="btn small" id="dbg-apply" title="Run this race again at this distance (same seed); a real race keeps its real laps and the sim races on">Apply</button>
+        <label for="dbg-wx" title="The strip's weather (looks only: the race keeps its own conditions)">Weather <select id="dbg-wx">
+          <option value="auto">The race's own</option><option value="0">Dry</option><option value="0.15">Damp, drizzle</option>
+          <option value="0.5">Rain</option><option value="0.9">Heavy rain</option></select></label>
+        <label for="dbg-light" title="Day or a floodlit night (looks only)">Light <select id="dbg-light">
+          <option value="auto">The race's own</option><option value="day">Day</option><option value="night">Night</option></select></label>
       </div></details>
     <span class="spacer"></span>
     <span class="chip" id="histchip" hidden title="Real race: every lap from the timing data. Take control of a car and make a call to race on from that lap."></span>
