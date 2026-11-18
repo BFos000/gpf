@@ -17,6 +17,7 @@
 import { packReal } from "./archive.js";
 import { eraCarScale } from "./sim/race.js";
 import { SKILLS } from "./sim/db.js";
+import * as G from "./programme.js";
 import { UPGRADES, upgradeEffect, upgradeCost as kUpgradeCost, SKILL_UP, skillCost, skillPct, index as kIndex, iconicOf, seedOf } from "./career.js";
 
 export const KIND = "fantasy-gp-real";
@@ -204,6 +205,7 @@ export function upMod(db, S, ref) {
 // a team's car pace this season (field-relative % of lap, lower = faster), with the player's upgrades
 export function carPace(db, S, ref) {
   const t = teamOf(S, ref); if (!t) return 9;
+  if (isMine(S, ref) && S.prog) return progPace(db, S);
   return (rsIndex(db).cars.get(t.car)?.pace ?? 9) + (upMod(db, S, ref)?.pace ?? 0);
 }
 export const upgradeCost = (S, stat) => kUpgradeCost({ up: S.up }, stat);
@@ -212,6 +214,35 @@ export function buyUpgrade(db, S, stat) {
   if (S.mode !== "team" || c === null || S.money < c - 1e-9) return false;
   S.money = money(S.money - c); S.up[stat]++;
   return true;
+}
+// ---------- the constructor programme (team mode): the player's car comes from departments and people ----------
+// docs/TEAM_PROGRAMME.md. S.prog is the programme state (programme.js); CPU teams race their real cars.
+const r2 = (x) => Math.round(x * 100) / 100;
+export const fieldOf = (db, y) => G.fieldOf(db, y);
+// the default setup for a new team: a real team starts where its real car stood; the custom team as a privateer
+export function progDefaults(db, ref, y) {
+  if (ref === CUSTOM || !ref) return { ...G.PRESETS.privateer, preset: "privateer", patience: 2, mentees: true };
+  const ix = rsIndex(db), t = ix.rs.seasons[y].teams.find((x) => x.ref === ref), car = ix.cars.get(t?.car);
+  const f = G.fieldOf(db, y), base = G.presetForCar(f, car?.pace ?? f.med, y);
+  const c = G.calibrate(base, y, base.target);
+  return { ...c, preset: "real", staff: Math.round(c.staff), fac: Math.round(c.fac), know: Math.round(c.know), patience: 2, mentees: true };
+}
+export const presetCfg = (db, ref, y, p) => (p === "real" ? progDefaults(db, ref, y) : { ...G.PRESETS[p], preset: p, patience: 2, mentees: true,
+  ...(ref !== CUSTOM && ref ? { target: progDefaults(db, ref, y).target } : {}) });
+// the player's car this round, as sim modifiers on top of the team's listed car (real or custom)
+export function progMod(db, S, ref, r = S.round) {
+  if (!isMine(S, ref) || !S.prog?.car) return null;
+  const y = S.year, t = teamOf(S, ref), car = rsIndex(db).cars.get(t?.car), f = G.fieldOf(db, y);
+  const sc = G.simCar(S.prog, y, r, S.calendar.length || 1, f, G.powerCap(db, y));
+  const pm = car?.p_mech_lap ?? f.mechMed;
+  return { pace: r2(sc.pace - (car?.pace ?? f.med)), rel: r2(sc.mod.rel * f.mechMed / pm), deg: sc.mod.deg, degRel: f.degMed ?? 0,
+           lean: r2(sc.mod.lean - (car?.power_lean ?? 0)), quali: sc.mod.quali, pitS: sc.mod.pitS, read: sc.mod.read };
+}
+// the player's car pace (offseason: the projection's expected index)
+function progPace(db, S) {
+  const f = G.fieldOf(db, S.year), P = S.prog;
+  const idx = P.car ? G.indexAt(P, S.round, S.calendar.length || 1) : G.projection(P, S.year).mu;
+  return f.med - (idx - 50) / 25 * f.spread;
 }
 function seasonTeams(db, S, y) {
   const ix = rsIndex(db);
@@ -253,7 +284,7 @@ export function newGame(db, o) {
                                   colours: o.custom?.livery ? [o.custom.livery.colors.base, o.custom.livery.colors.c2] : o.custom?.colours ?? ["#2a7fff", "#ffffff"] } : null,
     me: o.me ? { name: String(o.me.name).slice(0, 40), code: String(o.me.code ?? "").toUpperCase().slice(0, 3) || String(o.me.name).replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase(),
                  helmet: o.me.helmet ?? null, lv: Object.fromEntries(SKILLS.map((k) => [k, 0])), money: START_MONEY.driver, earned: 0 } : null,
-    money: o.team === CUSTOM ? START_MONEY.custom : START_MONEY.real, up: { pace: 0, deg: 0, rel: 0 },
+    money: o.team === CUSTOM ? START_MONEY.custom : START_MONEY.real, up: { pace: 0, deg: 0, rel: 0 }, prog: null,
     births: o.births === "shuffled" ? "shuffled" : "real", shift: o.births === "shuffled" ? shuffledShift(db, o.seed ?? 1) : {},
     phase: "market", teams: [], contracts: {}, retired: {}, unsigned: {}, best: {},
     calendar: [], round: 0, results: [], history: [], news: [], market: null,
@@ -261,6 +292,7 @@ export function newGame(db, o) {
   if (S.mode === "team" && S.player.team !== CUSTOM && !ix.rs.seasons[startYear].teams.some((t) => t.ref === S.player.team))
     throw new Error("that team did not race in the starting season");
   S.teams = seasonTeams(db, S, startYear);
+  if (S.mode === "team") S.prog = G.newProgramme(o.prog ?? progDefaults(db, S.player.team, startYear), startYear, S.seed);
   attach(db, S);
   // the real line-ups (each driver once; contracts of 1-3 seasons); shuffled births: every seat starts open
   const R = rngOf(S.seed, "lineups");
@@ -450,12 +482,19 @@ export function startSeason(db, S) {
   if (!S.market.done) runMarket(db, S, 200);
   if (!S.market.done && S.mode === "team" && openSeats(S, S.player.team) > 0) return false;   // sign your drivers first
   closeMarket(db, S);
+  if (S.prog && !S.prog.car) {
+    const cut = G.enforceCap(S.prog, S.year);
+    if (cut) S.news.push({ year: S.year, text: `Cost cap: department budgets cut by ${Math.round(cut * 100)}% to fit.`, mine: true });
+    const exp = G.projection(S.prog, S.year).mu, c = G.buildCar(S.prog, S.year);
+    S.news.push({ year: S.year, text: `The ${S.year} car is built: index ${c.index.toFixed(1)} (expected ${exp.toFixed(1)}).`, mine: true });
+  }
   S.phase = "season"; S.round = 0; S.results = [];
   return true;
 }
 
 // ---------- races ----------
 export const driversOf = (S, ref) => Object.keys(S.contracts).filter((d) => S.contracts[d].team === ref);
+const modFor = (db, S, ref, r) => (S.prog ? progMod(db, S, ref, r) : upMod(db, S, ref));
 export function raceConfig(db, S, r) {
   const ix = rsIndex(db), cal = S.calendar[r], y = S.year;
   const circ = db.circuits.find((c) => c.ref === cal.circuit);
@@ -469,7 +508,7 @@ export function raceConfig(db, S, r) {
   for (const t of S.teams) for (const d of driversOf(S, t.ref)) {
     const mine = isMine(S, t.ref) || d === playerDriver(S);
     entries.push({ driver: Number(d), season: y, seasonData: formOf(db, S, d, y), car: t.car, team: t.ref,
-                   ...(upMod(db, S, t.ref) ? { mod: upMod(db, S, t.ref) } : {}), ...(mine ? { mine: true } : {}) });
+                   ...(modFor(db, S, t.ref, r) ? { mod: modFor(db, S, t.ref, r) } : {}), ...(mine ? { mine: true } : {}) });
   }
   return {
     name: `${y} R${r + 1} · ${cal.name}`, circuit: circ.ref, layout: lay.key, year: y, laps,
@@ -484,7 +523,7 @@ export function recordRace(db, S, cfg, out, calls) {
   S.results[r] = out.result.map((x) => {
     const row = resultRow(cfg, out, x, pts), fin = row.fin, e = cfg.entries[x.c];
     const pz = fin ? PRIZE_PTS[x.pos - 1] ?? 0 : 0;
-    if (isMine(S, e.team)) S.money = money(S.money + 0.25 + 0.12 * pz);
+    if (isMine(S, e.team) && !S.prog) S.money = money(S.money + 0.25 + 0.12 * pz);
     if (row.d === playerDriver(S) && S.me) {
       const earn = money((S.contracts[row.d]?.salary ?? 0) / S.calendar.length + 0.05 * pz);
       S.me.money = money(S.me.money + earn); S.me.earned = money(S.me.earned + earn); row.earn = earn;
@@ -497,6 +536,7 @@ export function recordRace(db, S, cfg, out, calls) {
     if (S.best[x.d] == null || p < S.best[x.d]) S.best[x.d] = p;
   }
   S.round++;
+  if (S.prog) for (const t of G.roundTick(S.prog, S.year, S.round, S.calendar.length)) S.news.push({ year: S.year, text: t, mine: true });
   if (S.round >= S.calendar.length) S.phase = "review";
   return true;
 }
@@ -573,8 +613,14 @@ export function myTeamSeason(S, ds = driverStandings(S), ts = teamStandings(S)) 
 export function endSeason(db, S) {
   if (S.phase !== "review") throw new Error("season not finished");
   const ds = driverStandings(S), ts = teamStandings(S);
-  ts.forEach((s, k) => {                                       // season prize for the player's team
-    if (isMine(S, s.team)) { const b = money(Math.max(0, ts.length - k) * 0.8); S.money = money(S.money + b); S.news.push({ year: S.year, text: `Season prize: ${fmtM(b)} (P${k + 1} in the constructors').`, mine: true }); }
+  if (S.prog) {                                                // the programme's season: money, people, know-how
+    const k = ts.findIndex((s) => isMine(S, s.team)), n = Math.max(ts.length, S.teams.length);
+    const place = k < 0 ? n : k + 1;
+    const out = G.closeSeason(S.prog, S.year, { place, n, champion: place === 1 }, nextYear(db, S.year), S.calendar.length);
+    for (const t of out.news) S.news.push({ year: S.year, text: t, mine: true });
+  }
+  ts.forEach((s, k) => {                                       // season prize for the player's team (before the programme)
+    if (isMine(S, s.team) && !S.prog) { const b = money(Math.max(0, ts.length - k) * 0.8); S.money = money(S.money + b); S.news.push({ year: S.year, text: `Season prize: ${fmtM(b)} (P${k + 1} in the constructors').`, mine: true }); }
   });
   const teamName = (ref) => teamOf(S, ref)?.name ?? ref;
   S.history.push({ year: S.year, champion: ds[0] ? { d: ds[0].d, team: ds[0].team, pts: ds[0].pts, car: teamOf(S, ds[0].team)?.car ?? null } : null,
@@ -636,6 +682,11 @@ export function deserialize(db, text) {
   if (S.kind !== KIND) throw new Error("not a Real Seasons save");
   rsIndex(db);
   if (S.custom && !S.custom.livery) S.custom.livery = defaultLivery(S.custom.colours);
+  if (S.mode === "team" && !S.prog) {                          // saves before the programme: levels -> know-how, money -> cash
+    S.prog = G.migrateUpgrades(G.newProgramme(progDefaults(db, S.player.team, S.year), S.year, S.seed), S.up, S.money);
+    if (S.phase === "season" || S.phase === "review") G.buildCar(S.prog, S.year);
+    S.news.push({ year: S.year, text: "Your team now runs a full programme: the upgrade levels became know-how and facilities.", mine: true });
+  }
   attach(db, S);
   repairRetired(db, S);
   return S;

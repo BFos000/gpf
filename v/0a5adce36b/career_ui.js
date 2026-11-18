@@ -1,5 +1,8 @@
 // Career dialog: new career (team or driver), your team (upgrades) or your driver (skills), standings by tier,
 // driver market (offers out, or offers to you), drivers, calendar, history, saves. The engine is career.js; races are watched in the main viewer through hooks.watch().
+import * as G from "./programme.js";
+import * as M from "./money.js";
+import { progView, progAct, progInput, setupHTML, setupInput } from "./programme_ui.js";
 import * as K from "./career.js";
 import { layoutFor } from "./sim/db.js";
 import { carThumb, helmetThumb } from "./thumbs.js";
@@ -8,7 +11,7 @@ import { unpackCareer, importArchive, tally, sortTable, driverCols, seasonGrid, 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const fmtM = (x) => `$${(Math.round(x * 10) / 10).toFixed(1)}M`;
-const TABS = [["overview", "Overview"], ["standings", "Standings"], ["market", "Market"], ["drivers", "Drivers"],
+const TABS = [["overview", "Overview"], ["team", "Programme"], ["standings", "Standings"], ["market", "Market"], ["drivers", "Drivers"],
   ["calendar", "Calendar"], ["history", "History"], ["save", "Save / load"]];
 
 export class CareerUI {
@@ -64,7 +67,15 @@ export class CareerUI {
   carIdOf(p) { try { return K.modelId(this.db, this.C.pairs[p]); } catch { return null; } }
   hn(d) { return `<span class="th-name">${helmetThumb(d)}${esc(this.dn(d))}</span>`; }   // helmet + name
   carLabel(p) { const pr = this.C.pairs[p]; return `${pr.model} ${this.C.teams[pr.ref].name}`; }
-  carR(p) { return K.carRating(this.db, K.carPace(this.db, this.C.pairs[p])); }
+  carR(p) { return K.carRating(this.db, K.carPace(this.db, this.C.pairs[p], this.C)); }
+  // the programme screens' context (programme_ui.js): the Career runs every season under one rules year
+  progCtx() {
+    const C = this.C, y = C.rulesYear, f = K.careerField();
+    return { P: C.progs[C.player], db: this.db, y, ny: y, phase: C.phase === "market" ? "off" : "season", round: C.round, nRounds: K.roundsOf(C),
+             f, fNext: f, cap: G.powerCap(this.db, y), sub: this.pgSub, setSub: (s) => { this.pgSub = s; },
+             label: `Season ${C.season}`, nextLabel: `Season ${C.season + 1}`, nextReg: K.nextReg(C), spreadNote: K.CAREER_SPREAD };
+  }
+  teamView() { return this.C.progs && !this.drv ? progView(this.progCtx()) : ""; }
   get drv() { return this.C?.mode === "driver"; }
   get me() { return this.C?.me?.id ?? null; }
   // team career: the player's entries; driver career: the entry the player drives (or has signed for)
@@ -98,14 +109,19 @@ export class CareerUI {
     const C = this.C, db = this.db;
     this.msg("");
     if (this.arm && !((a === "newcareer" && this.arm.key === "new") || (a === "slotdel" && this.arm.key === `del:${ds.n}`))) this.arm = null;
+    if (a.startsWith("pg") && a !== "pgpreset" && C?.progs && !this.drv) {
+      const m = progAct(this.progCtx(), a, ds, $("cr-body"));
+      if (m != null) { this.save(); this.render(); if (m) this.msg(m); return; }
+    }
     switch (a) {
+      case "pgpreset": this.newProg = { ...G.PRESETS[ds.p], preset: ds.p, patience: 2, mentees: true }; this.render(); return;
       case "tab": this.tab = ds.tab; break;
       case "hseason": this.hOpen = this.hOpen === Number(ds.s) ? null : Number(ds.s); break;
       case "htier": this.hTier = Number(ds.t); break;
       case "attoggle": this.atOpen = !this.atOpen; return;
       case "atsort": this.atSort = { ...this.atSort, [ds.t]: { k: ds.k, dir: Number(ds.dir) } }; break;
       case "tier": this.tier = Number(ds.t); break;
-      case "pick": this.pick = ds.ref; break;
+      case "pick": this.pick = ds.ref; this.newProg = null; break;
       case "reseed": this.newSeed = 1 + Math.floor(Math.random() * 99999); this.pick = null; break;
       case "newmode": this.newMode = ds.m; break;
       case "startdrv": {
@@ -132,7 +148,7 @@ export class CareerUI {
       case "hclear": C.me.helmet = null; this.hel.src = this.hel.out = null; this.h.setHelmet?.(K.ME_ID, null); this.msg("Helmet picture removed."); break;
       case "start": {
         if (!this.pick) { this.msg("Pick a constructor first."); return; }
-        this.C = K.newCareer(db, { seed: this.newSeed, rulesYear: this.newRules, player: this.pick, calMode: this.newCal });
+        this.C = K.newCareer(db, { seed: this.newSeed, rulesYear: this.newRules, player: this.pick, calMode: this.newCal, prog: this.newProg ?? null });
         this.tab = "market"; this.mseat = K.userOpen(this.C)[0] ?? null;
         this.save(); this.msg(`Career started with ${this.C.teams[this.pick].name}. The market is open: sign a driver for each of your entries.`);
         break;
@@ -249,6 +265,8 @@ export class CareerUI {
   }
   change(e) {
     const el = e.target, C = this.C;
+    if (el.dataset?.pg && C?.progs) { if (progInput(this.progCtx(), el)) { this.save(); this.render(); } return; }
+    if (el.dataset?.pgnew && this.newProg) { setupInput(this.newProg, el); return; }
     if (el.id === "cr-years") this.myears = Number(el.value);
     else if (el.id === "cr-name") this.newName = el.value;
     else if (el.id === "cr-code") this.newCode = el.value;
@@ -260,7 +278,7 @@ export class CareerUI {
     else if (el.id === "cr-calmode-c") {
       if (K.setCalMode(this.db, C, el.value)) { this.save(); this.render(); this.msg(el.value === "fixed" ? "The calendar stays as it is." : "From next offseason the calendar changes by itself; Re-draw now to change it for this season too."); }
     }
-    else if (el.id === "cr-rules") { this.newRules = Math.min(2024, Math.max(1950, Number(el.value) || 2016)); }
+    else if (el.id === "cr-rules") { this.newRules = Math.min(2024, Math.max(1950, Number(el.value) || 2016)); this.newProg = null; }
     else if (el.id === "cr-autowatch") { C.autoWatch = el.checked; this.save(); this.render(); }
     else if (el.dataset.watchtier !== undefined) {
       const t = Number(el.dataset.watchtier), s = new Set(C.watchExtra ?? []);
@@ -326,8 +344,8 @@ export class CareerUI {
     const C = this.C;
     $("cr-title").textContent = C ? `Career · ${this.drv ? C.me.name : C.teams[C.player].name} · Season ${C.season}` : "New career";
     $("cr-money").hidden = !C;
-    if (C) $("cr-money").textContent = fmtM(this.drv ? C.me.money : C.teams[C.player].money);
-    $("cr-tabs").innerHTML = C ? TABS.map(([k, l]) => `<button class="${this.tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${k === "market" && C.market ? " ●" : ""}</button>`).join("") : "";
+    if (C) $("cr-money").textContent = this.drv ? fmtM(C.me.money) : C.progs ? M.fmt(C.progs[C.player].cash, C.rulesYear) : fmtM(C.teams[C.player].money);
+    $("cr-tabs").innerHTML = C ? TABS.filter(([k]) => k !== "team" || (C.progs && !this.drv)).map(([k, l]) => `<button class="${this.tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${k === "market" && C.market ? " ●" : ""}</button>`).join("") : "";
     $("cr-actions").innerHTML = C ? this.actions() : "";
     this.renderBody();
   }
@@ -386,6 +404,7 @@ export class CareerUI {
       </div>
       <h3>Choose your constructor <small>(entries by decade, with their starting tier)</small></h3>
       <div class="cr-teams">${cards}</div>
+      ${this.pick ? `<h3>Your programme <small>(where the team starts: every value can be changed)</small></h3>${setupHTML(this.newProg ??= K.careerProgDefaults(prev, this.pick), this.newRules, "cr-pg")}` : ""}
       <h3>Or load a career</h3>
       <div class="su-bar">${Object.keys(all).map((n) => `<button class="btn" data-act="slotload" data-n="${esc(n)}">${esc(n)}</button>`).join("") || "<span class=\"muted\">No saves in this browser.</span>"}
         <label class="btn file" for="cr-file">Load save file<input type="file" id="cr-file" accept=".json,application/json" hidden></label></div>
@@ -395,7 +414,7 @@ export class CareerUI {
   overviewView() {
     const C = this.C;
     let top = "";
-    if (C.phase === "market") top = `<div class="cr-note">Offseason. ${C.market.done ? "The market is closed: start the season when ready." : `The driver market is open (round ${C.market.round}): ${K.userOpen(C).length} of your seats need a driver. Go to the Market tab.`} You can also change the calendar and buy upgrades now.</div>`;
+    if (C.phase === "market") top = `<div class="cr-note">Offseason. ${C.market.done ? "The market is closed: start the season when ready." : `The driver market is open (round ${C.market.round}): ${K.userOpen(C).length} of your seats need a driver. Go to the Market tab.`} You can also change the calendar and set up the programme now (budgets, staff, the car profile).</div>`;
     if (C.phase === "season") top = this.roundPanel();
     if (C.phase === "review") top = `<div class="cr-note">All ${K.roundsOf(C)} rounds are done. End the season to pay prizes, run promotion and relegation, and open the market.</div>`;
     if (this.drv) {
@@ -429,7 +448,8 @@ export class CareerUI {
     const d = this.seatDriver(p);
     const st = K.standings(C, pr.tier), k = st.findIndex((x) => x.p === p);
     const pos = C.phase !== "market" && C.results.length ? `P${k + 1} · ${st[k].pts} pts` : "";
-    const ups = Object.entries(K.UPGRADES).map(([s, u]) => {
+    const prog = C.progs?.[pr.ref], hasUp = pr.up.pace + pr.up.deg + pr.up.rel > 0;
+    const ups = prog ? "" : Object.entries(K.UPGRADES).map(([s, u]) => {
       const cost = K.upgradeCost(pr, s);
       const eff = s === "pace" ? `${K.upgradeEffect(s, pr.up[s]).toFixed(2)}%` : `×${K.upgradeEffect(s, pr.up[s]).toFixed(2)}`;
       return `<div class="cr-up"><span>${u.label}</span><span class="lv">${"■".repeat(pr.up[s])}${"□".repeat(u.max - pr.up[s])}</span><span class="muted">${eff}</span>
@@ -438,8 +458,10 @@ export class CareerUI {
     return `<div class="cr-card"><header><b>${esc(this.pairLabel(p))}</b><span class="badge">Tier ${pr.tier + 1}</span><span class="muted">${pos}</span></header>
       <div>${this.modelPicker(p)} car · rating ${this.carR(p)} <span class="muted">(models ${pr.years[0]}–${pr.years.at(-1)})</span></div>
       <div>${d ? `${esc(this.dn(d))} · rating ${this.rating(d)} <span class="muted">(${this.peak(d)} form) · ${this.contractText(d)}</span>` : '<span class="bad">No driver: sign one in the market</span>'}</div>
-      <div class="cr-ups">${ups}</div>
-      <div class="muted small">${this.drv ? "Your entry. The team buys its own upgrades (CPU teams don't upgrade)." : "Upgrades are permanent and stay with this entry."}</div></div>`;
+      ${prog ? `<div>Programme: ${prog.car ? `car index ${G.indexAt(prog, C.round, K.roundsOf(C)).toFixed(1)}` : `projected index ${G.projection(prog, C.rulesYear).mu.toFixed(1)}`} <span class="muted">(${(-K.progOffset(C, pr.ref)).toFixed(2)}% a lap against the ${pr.model} model as it raced)</span>${hasUp ? ` · <span class="muted">older upgrades kept: pace ${pr.up.pace}, tyres ${pr.up.deg}, reliability ${pr.up.rel}</span>` : ""}</div>
+        ${this.drv ? "" : '<div class="su-bar"><button class="btn primary" data-act="tab" data-tab="team">Run the programme</button></div>'}`
+      : `<div class="cr-ups">${ups}</div>
+      <div class="muted small">${this.drv ? "Your entry. The team buys its own upgrades (CPU teams don't upgrade)." : "Upgrades are permanent and stay with this entry."}</div>`}</div>`;
   }
 
   // the player's model: a choice of up to one year either way in the offseason, fixed during the season

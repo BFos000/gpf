@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="v/b067a4a29c/">
+<base href="v/0a5adce36b/">
 <title>Fantasy GP</title>
 <meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
 <meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
@@ -306,6 +306,29 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
   .su-fb .fb-grid label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
   .su-fb .fb-grid input, .su-fb .fb-grid select { width: 100%; box-sizing: border-box; }
   .su-fb .su-bar { flex-wrap: wrap; gap: 4px; }
+/* constructor programme (programme_ui.js) */
+.pg-sum { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 4px 0 10px; }
+.pg-sum > div { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.pg-sum b { font-family: var(--font-data); font-size: 15px; }
+.bad { color: var(--bad, #ff6b6b); }
+.pg-credit { display: inline-block; min-width: 1.4em; text-align: center; border-radius: 3px; font-weight: 700; padding: 0 4px; color: #111; }
+.pg-credit.c0 { background: #5fd38d; } .pg-credit.c1 { background: #a8d65f; } .pg-credit.c2 { background: #ffd24a; } .pg-credit.c3 { background: #ff9a4a; } .pg-credit.c4 { background: #ff5c5c; }
+.pg-depts th[scope=row] { text-align: left; white-space: nowrap; }
+.pg-depts td { vertical-align: top; }
+.pg-depts input[type=range] { width: 90px; vertical-align: middle; }
+.pg-curve .pg-band { fill: color-mix(in srgb, var(--accent) 14%, transparent); }
+.pg-curve .pg-line { fill: none; stroke: var(--fg); stroke-width: 1.2; }
+.pg-curve .pg-mu { stroke: var(--accent); stroke-width: 1.5; }
+.pg-curve .pg-mark { stroke: #ffd24a; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.pg-cands { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.pg-cand { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; min-width: 170px; display: flex; flex-direction: column; gap: 3px; }
+.pg-star { color: var(--accent); }
+.pg-bar { display: inline-block; height: 6px; width: 100px; border-radius: 3px; background: linear-gradient(90deg, var(--accent) var(--v), var(--panel-2) var(--v)); }
+.pg-prof { display: grid; grid-template-columns: 70px 1fr 80px; gap: 4px 8px; align-items: center; margin: 6px 0; }
+.pg-prof > span:last-of-type { text-align: right; }
+.pg-prof .muted { grid-column: 1 / -1; }
+.btn.small { padding: 2px 7px; font-size: 12px; }
+.btn.on { border-color: var(--accent); color: var(--accent); }
 </style>
 
 <div class="app" id="app">

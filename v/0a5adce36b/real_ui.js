@@ -4,12 +4,15 @@
 import * as R from "./real.js";
 import { UPGRADES, upgradeEffect, SKILL_UP, skillCost, carRating, index as kIndex, iconicOf, SKILL_MAX } from "./career.js";
 import { simulateRace } from "./sim/race.js";
+import * as G from "./programme.js";
+import * as M from "./money.js";
+import { progView, progAct, progInput, setupHTML, setupInput } from "./programme_ui.js";
 import { carThumb, helmetThumb } from "./thumbs.js";
 import { unpackReal, importArchive, tally, tallyTeams, sortTable, driverCols, seasonGrid, cellHTML } from "./archive.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
-const TABS = [["overview", "Overview"], ["standings", "Standings"], ["market", "Market"], ["drivers", "Drivers"],
+const TABS = [["overview", "Overview"], ["team", "Programme"], ["standings", "Standings"], ["market", "Market"], ["drivers", "Drivers"],
   ["calendar", "Calendar"], ["history", "History"], ["teamhist", "Team history"], ["save", "Save / load"]];
 const NEW_MODES = [["team", "Run a real team"], ["custom", "Your own team"], ["rdriver", "Be a real driver"], ["me", "Your own driver"]];
 const STORE_KEY = "realSeasons";
@@ -69,15 +72,26 @@ export class RealUI {
   get team() { return this.S?.mode === "team" ? this.S.player.team : null; }
   get myDriver() { return this.S?.mode === "driver" ? String(this.S.player.driver) : null; }
   get myTeamNow() { return this.team ?? (this.S.contracts[this.myDriver]?.team ?? this.S.market?.held[this.myDriver]?.team ?? null); }
-  money() { return this.S.mode === "team" ? this.S.money : this.S.me ? this.S.me.money : null; }
+  money() { return this.S.mode === "team" ? (this.S.prog ? this.S.prog.cash : this.S.money) : this.S.me ? this.S.me.money : null; }
+  teamView() { return this.S.prog ? progView(this.progCtx()) : ""; }
 
   // ---------- actions ----------
+  // the programme screens' context (programme_ui.js)
+  progCtx() {
+    const S = this.S, db = this.db, ny = R.nextYear(db, S.year);
+    return { P: S.prog, db, y: S.year, ny, phase: S.phase === "market" ? "off" : "season", round: S.round, nRounds: S.calendar.length || 16,
+             f: R.fieldOf(db, S.year), fNext: ny ? R.fieldOf(db, ny) : null, cap: G.powerCap(db, S.year), sub: this.pgSub, setSub: (s) => { this.pgSub = s; } };
+  }
   act(a, ds) {
     const S = this.S, db = this.db;
+    if (a.startsWith("pg") && a !== "pgpreset" && S?.prog) {
+      const m = progAct(this.progCtx(), a, ds, $("rs-body"));
+      if (m != null) { this.save(); this.render(); if (m) this.msg(m); return; }
+    }
     switch (a) {
+      case "pgpreset": this.n.prog = R.presetCfg(db, this.n.mode === "custom" ? R.CUSTOM : this.n.team, this.n.year, ds.p); break;
       case "close": $("real").close(); return;
       case "tab": this.tab = ds.tab; break;
-      case "newmode": this.n.mode = ds.m; break;
       case "lvtoggle": this.lvOpen = !this.lvOpen; return;
       case "attoggle": this.atOpen = !this.atOpen; return;
       case "atsort": this.atSort = { ...this.atSort, [ds.t]: { k: ds.k, dir: Number(ds.dir) } }; break;
@@ -89,14 +103,15 @@ export class RealUI {
         if (a === "fixres") { R.applyResult(S, f.r, f.rows); this.save(); this.msg(`${S.calendar[f.r].name}: re-run result used; standings updated.`); }
         break;
       }
-      case "pickteam": this.n.team = ds.ref; break;
+      case "pickteam": this.n.team = ds.ref; this.n.prog = R.progDefaults(db, ds.ref, this.n.year); break;
+      case "newmode": this.n.mode = ds.m; this.n.prog = this.n.mode === "custom" ? R.progDefaults(db, R.CUSTOM, this.n.year) : this.n.team ? R.progDefaults(db, this.n.team, this.n.year) : null; break;
       case "pickdrv": this.n.driver = Number(ds.d); break;
       case "reseed": this.n.seed = 1 + Math.floor(Math.random() * 99999); this.n.driver = null; break;
       case "start": {
         const n = this.n, o = { seed: n.seed, startYear: n.year, maxRounds: n.maxRounds, births: n.births };
         try {
-          if (n.mode === "team") { if (!n.team) return this.msg("Pick a team first."); this.S = R.newGame(db, { ...o, mode: "team", team: n.team }); }
-          else if (n.mode === "custom") this.S = R.newGame(db, { ...o, mode: "team", team: R.CUSTOM, custom: { name: n.tname.trim() || "My Team", livery: n.livery } });
+          if (n.mode === "team") { if (!n.team) return this.msg("Pick a team first."); this.S = R.newGame(db, { ...o, mode: "team", team: n.team, prog: n.prog ?? undefined }); }
+          else if (n.mode === "custom") this.S = R.newGame(db, { ...o, mode: "team", team: R.CUSTOM, custom: { name: n.tname.trim() || "My Team", livery: n.livery }, prog: n.prog ?? R.progDefaults(db, R.CUSTOM, n.year) });
           else if (n.mode === "rdriver") { if (!n.driver) return this.msg("Pick a driver first."); this.S = R.newGame(db, { ...o, mode: "driver", driver: n.driver }); }
           else { if (!n.name.trim()) return this.msg("Choose your driver's name first."); this.S = R.newGame(db, { ...o, mode: "driver", me: { name: n.name.trim(), code: n.code } }); }
         } catch (e) { return this.msg(e.message); }
@@ -159,7 +174,9 @@ export class RealUI {
   }
   change(e) {
     const el = e.target, n = this.n;
-    if (el.id === "rs-year") { n.year = Number(el.value); n.team = null; n.driver = null; }
+    if (el.dataset?.pg && this.S?.prog) { if (progInput(this.progCtx(), el)) { this.save(); this.render(); } return; }
+    if (el.dataset?.pgnew && n.prog) { setupInput(n.prog, el); return; }
+    if (el.id === "rs-year") { n.year = Number(el.value); n.team = null; n.driver = null; n.prog = n.mode === "custom" ? R.progDefaults(this.db, R.CUSTOM, n.year) : null; }
     else if (el.id === "rs-cmaxr") {
       const now = R.setMaxRounds(this.db, this.S, el.value); this.save(); this.render();
       this.msg(now ? `The ${this.S.year} calendar now has ${this.S.calendar.length} rounds.` : `From the next offseason, seasons are cut to ${this.S.maxRounds || "the full calendar"}${this.S.maxRounds ? " rounds" : ""}.`);
@@ -229,8 +246,8 @@ export class RealUI {
     const S = this.S;
     $("rs-title").textContent = S ? `Real Seasons · ${S.mode === "team" ? this.tn(this.team) : this.dn(this.myDriver)} · ${S.year}` : "Real Seasons";
     const m = S ? this.money() : null;
-    $("rs-money").hidden = m == null; if (m != null) $("rs-money").textContent = R.fmtM(m);
-    $("rs-tabs").innerHTML = S ? TABS.map(([k, l]) => `<button class="${this.tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${k === "market" && S.market ? " ●" : ""}</button>`).join("") : "";
+    $("rs-money").hidden = m == null; if (m != null) $("rs-money").textContent = S.prog ? M.fmt(m, S.year) : R.fmtM(m);
+    $("rs-tabs").innerHTML = S ? TABS.filter(([k]) => k !== "team" || S.prog).map(([k, l]) => `<button class="${this.tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${k === "market" && S.market ? " ●" : ""}</button>`).join("") : "";
     $("rs-actions").innerHTML = S ? this.actions() : "";
     this.renderBody();
   }
@@ -268,7 +285,7 @@ export class RealUI {
       <button class="btn" data-act="reseed">New seed</button>
       <span class="spacer"></span>
       <button class="btn primary" data-act="start">Start</button></div>`;
-    const intro = `<p>Every real season in order from ${n.year}: the real teams and their real cars, the real calendar (${sea.rounds.length} rounds in ${n.year}), the real points system. Drivers age; after their real careers they carry on along the age curve until they retire. The driver market is open every offseason. CPU teams don't upgrade their cars; yours can.</p>`;
+    const intro = `<p>Every real season in order from ${n.year}: the real teams and their real cars, the real calendar (${sea.rounds.length} rounds in ${n.year}), the real points system. Drivers age; after their real careers they carry on along the age curve until they retire. The driver market is open every offseason. CPU teams race their real cars; yours comes from your own programme: departments, people, money.</p>`;
     let pick = "";
     if (n.mode === "team") {
       pick = `<h3>Choose a ${n.year} team</h3><div class="cr-teams">${sea.teams.map((t) => {
@@ -276,11 +293,13 @@ export class RealUI {
         return `<button class="cr-team ${n.team === t.ref ? "on" : ""}" data-act="pickteam" data-ref="${esc(t.ref)}" style="--tc:${car?.colours?.[0] ?? "#888"}">
           ${carThumb(t.car, t.drivers[0], 96, 30)}<b>${esc(t.name)}</b><span>Car ${carRating(db, car?.pace ?? 9)} · ${t.seats} seat${t.seats === 1 ? "" : "s"} · ${t.drivers.slice(0, t.seats).map((d) => esc(R.driverName(db, d))).join(", ")}</span></button>`;
       }).join("")}</div>`;
+      if (n.team && n.prog) pick += `<h3>Your programme <small>(where the team starts: every value can be changed)</small></h3>${setupHTML(n.prog, n.year)}`;
     } else if (n.mode === "custom") {
       pick = `<div class="cr-drvform"><div class="cr-drvfields">
         <label for="rs-tname">Team name <input id="rs-tname" maxlength="30" value="${esc(n.tname)}" placeholder="My Team"></label>
-        </div><div class="cr-note" style="max-width:520px">Your team starts with two empty seats and ${R.fmtM(R.START_MONEY.custom)}. Its car starts a little slower than the usual slowest car of each season and, fully upgraded, is as dominant as the best cars in history were in theirs.</div></div>
-        <h3>Livery</h3>${this.liveryEditor()}`;
+        </div><div class="cr-note" style="max-width:520px">Your team starts with two empty seats. Its car comes from your programme: the departments, the people you hire and the money you spend on them.</div></div>
+        <h3>Livery</h3>${this.liveryEditor()}
+        <h3>Your programme <small>(where the team starts: every value can be changed)</small></h3>${setupHTML(n.prog ??= R.progDefaults(db, R.CUSTOM, n.year), n.year)}`;
     } else if (n.mode === "rdriver") {
       const f = this.filter.toLowerCase();
       const S0 = { me: null, retired: {}, contracts: {}, year: n.year, shift: n.births === "shuffled" ? this.previewShift() : {} };
@@ -358,11 +377,20 @@ export class RealUI {
         return `<div class="cr-up"><span>${u.label}</span><span class="lv">${"■".repeat(lv)}${"□".repeat(u.max - lv)}</span><span class="n">${eff}</span>
           ${cost === null ? "<span class=\"muted\">max</span>" : `<button class="btn" data-act="up" data-s="${k}" ${S.money < cost ? "disabled" : ""}>+1 · ${R.fmtM(cost)}</button>`}</div>`;
       }).join("");
+      if (S.prog) {
+        const P = S.prog, f = R.fieldOf(db, S.year), idx = P.car ? G.indexAt(P, S.round, S.calendar.length) : G.projection(P, S.year).mu;
+        card = `<div class="cr-card"><header><b>${esc(t?.name ?? "")}</b><span class="chip">Car ${t ? this.carR(ref) : "—"}</span><span class="chip">Index ${idx.toFixed(1)}${P.car ? "" : " (projected)"}</span></header>
+          <div>Drivers: ${[...ds, ...held].map((d) => `${esc(this.dn(d))} (${this.age(d)}, form ${this.form(d)})`).join(", ") || "<span class=\"muted\">none yet</span>"}</div>
+          <div>Cash ${M.fmt(P.cash, S.year)} · debt ${M.fmt(P.debt, S.year)} · credit <span class="pg-credit c${P.credit}">${G.CREDIT[P.credit]}</span> · reputation ${Math.round(P.rep)} · best real car: index ${f.bestIndex.toFixed(0)}</div>
+          ${ref === R.CUSTOM ? `<details class="cr-hedit" ${this.lvOpen ? "open" : ""}><summary data-act="lvtoggle">Livery</summary>${this.liveryEditor()}</details>` : ""}
+          <div class="su-bar"><button class="btn primary" data-act="tab" data-tab="team">Run the programme</button>${S.phase === "market" ? '<span class="muted small">Set budgets, staff and the car profile before the season starts: the car is built then.</span>' : ""}</div></div>`;
+      } else {
       card = `<div class="cr-card"><header><b>${esc(t?.name ?? "")}</b><span class="chip">Car ${t ? this.carR(ref) : "—"}</span><span class="muted">${esc(t?.car ?? "")}</span></header>
         <div>Drivers: ${[...ds, ...held].map((d) => `${esc(this.dn(d))} (${this.age(d)}, form ${this.form(d)})`).join(", ") || "<span class=\"muted\">none yet</span>"}</div>
         <div class="cr-ups">${ups}</div>
         ${ref === R.CUSTOM ? `<details class="cr-hedit" ${this.lvOpen ? "open" : ""}><summary data-act="lvtoggle">Livery</summary>${this.liveryEditor()}</details>` : ""}
         <div class="muted small">${ref === R.CUSTOM ? "Pace upgrades move your car from a little behind the usual slowest car of the season (level 0) to as dominant as the best cars ever (level 10)." : "Pace upgrades take a share off your real car's lap time; CPU teams don't upgrade."}</div></div>`;
+      }
     } else {
       const d = this.myDriver, team = this.myTeamNow;
       const skills = S.me ? `<div class="cr-ups">${Object.entries(SKILL_UP).map(([k, u]) => {

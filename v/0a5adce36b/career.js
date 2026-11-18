@@ -22,6 +22,8 @@ import { simulateRace } from "./sim/race.js";
 import { layoutFor, indexDb, SKILLS } from "./sim/db.js";
 
 // pre-war decades (golden-era data, 1906-1941): labelled in full so they don't clash with 00s / 10s / 20s
+import * as G from "./programme.js";
+
 export const DECADES = [["1900s", 1900, 1909], ["1910s", 1910, 1919], ["1920s", 1920, 1929], ["1930s", 1930, 1941],
   ["50s", 1950, 1959], ["60s", 1960, 1969], ["70s", 1970, 1979], ["80s", 1980, 1989], ["90s", 1990, 1999], ["00s", 2000, 2009], ["10s", 2010, 2019], ["20s", 2020, 2024]];
 export const TIER_SIZE = 26, MOVE = 6, ROUNDS = 10;
@@ -187,14 +189,14 @@ export function raceMod(db, pr) {
   const ix = index(db), m = modOf(pr), c = ix.carAt.get(`${pr.ref}|${pr.model}`);
   return { ...m, pace: m.pace + (c.pace - ix.cars.get(c.id).pace) };
 }
-// effective pace of an entry's current model (pct of lap, lower is faster)
-export function carPace(db, pr) { return index(db).carAt.get(`${pr.ref}|${pr.model}`).pace + modOf(pr).pace; }
+// effective pace of an entry's current model (pct of lap, lower is faster); with a career C: its programme too
+export function carPace(db, pr, C = null) { return index(db).carAt.get(`${pr.ref}|${pr.model}`).pace + modOf(pr).pace + (C ? progOffset(C, pr.ref) : 0); }
 // what a driver expects of an entry: its model and the neighbouring ones it may drift to, plus upgrades
 export function expectedPace(db, pr) {
   const ix = index(db), k = pr.years.indexOf(pr.model);
   const ys = pr.years.slice(Math.max(0, k - 1), k + 2);
   const m = ys.reduce((s, y) => s + ix.carAt.get(`${pr.ref}|${y}`).pace, 0) / ys.length;
-  return 0.6 * ix.carAt.get(`${pr.ref}|${pr.model}`).pace + 0.4 * m + modOf(pr).pace;
+  return 0.6 * ix.carAt.get(`${pr.ref}|${pr.model}`).pace + 0.4 * m + modOf(pr).pace + (pr._prog ?? 0);
 }
 export const carRating = (db, pace) => Math.max(1, Math.round(99 - (pace - index(db).carMin) * 7));
 export const nTiers = (C) => Math.ceil(C.pairs.length / TIER_SIZE);
@@ -202,8 +204,88 @@ export const tierPairs = (C, t) => C.pairs.map((_, p) => p).filter((p) => C.pair
 export const driverOf = (C, p) => Object.keys(C.contracts).find((d) => C.contracts[d].pair === p) ?? null;
 export function upgradeCost(pr, stat) { const u = UPGRADES[stat], l = pr.up[stat]; return l >= u.max ? null : u.base + u.inc * l; }
 
+// ---------- constructor programmes: every team runs departments (docs/TEAM_PROGRAMME.md) ----------
+// A team's programme car adjusts all its entries: index 50 = the model as it raced; 25 points = CAREER_SPREAD % a lap.
+// CPU teams are run by programme.js's scripted manager at their own skill. Rule changes come every 5-9 seasons.
+export const CAREER_SPREAD = 1.0;
+export const careerField = () => ({ med: 0, spread: CAREER_SPREAD, mechMed: 1, degMed: 0, bestIndex: null });
+const PROG_SKILL = [0.3, 0.85];                  // CPU managers: skill drawn in this range
+const CAREER_SPONSOR = 0.85;                     // sponsorship level: keeps the lower tiers' teams solvent
+export function careerProgDefaults(C, ref) {
+  const best = Math.min(...C.pairs.filter((p) => p.ref === ref).map((p) => p.tier));
+  const preset = best <= 1 ? "bigname" : best <= 4 ? "midfield" : "privateer";
+  const base = { ...G.PRESETS[preset], preset, rep: Math.max(5, 80 - 8 * best), patience: 2, mentees: true };
+  const c = G.calibrate(base, C.rulesYear, 50, C.seed);
+  return { ...c, preset, staff: Math.round(c.staff), fac: Math.round(c.fac), know: Math.round(c.know) };
+}
+function initProgs(db, C, playerCfg = null) {
+  C.progs = {};
+  const R = rngOf(C.seed, "prog-skill");
+  for (const ref of Object.keys(C.teams).sort()) {
+    const mine = ref === C.player && C.mode === "team";
+    const P = G.newProgramme(mine && playerCfg ? playerCfg : careerProgDefaults(C, ref), C.rulesYear, seedOf(C.seed, ref));
+    if (!mine) P.ai = Math.round((PROG_SKILL[0] + (PROG_SKILL[1] - PROG_SKILL[0]) * R()) * 100) / 100;
+    P.sponsor = CAREER_SPONSOR;
+    C.progs[ref] = P;
+  }
+  scheduleRules(C);
+}
+function scheduleRules(C) {
+  const R = rngOf(C.seed, C.season, "rules");
+  C.ruleNext = { season: C.season + 5 + Math.floor(R() * 5), size: Math.round((0.3 + 0.4 * R()) * 100) / 100 };
+}
+// the share of know-how the coming season's rules cut (known a season ahead)
+export const nextReg = (C) => (C.ruleNext?.season === C.season + 1 ? C.ruleNext.size : 0);
+// a team's programme offset (pct of lap) this round, or its projection before the car is built
+export function progOffset(C, ref, r = C.round) {
+  const P = C.progs?.[ref]; if (!P) return 0;
+  const idx = P.car ? G.indexAt(P, r, roundsOf(C)) : G.projection(P, C.rulesYear).mu;
+  return -(idx - 50) / 25 * CAREER_SPREAD;
+}
+function progRaceMod(db, C, pr, r) {
+  const P = C.progs?.[pr.ref]; if (!P?.car) return null;
+  return G.simCar(P, C.rulesYear, r, roundsOf(C), careerField(), G.powerCap(db, C.rulesYear));
+}
+// season start: CPU managers decide, then every team's car is built
+function buildProgCars(db, C) {
+  if (!C.progs) return;
+  for (const [ref, P] of Object.entries(C.progs)) {
+    if (P.ai != null) G.autoManage(P, C.rulesYear, P.ai, rngOf(C.seed, C.season, "ai", ref), { rounds: roundsOf(C), nextReg: nextReg(C), resolve: true });
+    const cut = G.enforceCap(P, C.rulesYear);
+    if (cut && ref === C.player) C.news.push({ season: C.season, text: `Cost cap: department budgets cut by ${Math.round(cut * 100)}% to fit.`, mine: true });
+    const exp = G.projection(P, C.rulesYear).mu, car = G.buildCar(P, C.rulesYear);
+    if (ref === C.player && C.mode === "team") C.news.push({ season: C.season, text: `This season's car is built: index ${car.index.toFixed(1)} (expected ${exp.toFixed(1)}).`, mine: true });
+  }
+}
+// season end: each team's money, people and know-how from its entries' results
+function closeProgs(db, C, tables) {
+  if (!C.progs) return;
+  const best = {};
+  tables.forEach((tab, t) => tab.forEach((x) => {
+    const ref = C.pairs[x.p].ref, b = (best[ref] ??= { prize: 0, score: 0, champion: false, rank: Infinity });
+    b.prize += tierPrize(t) * G.prizeByPlace(x.pos, TIER_SIZE);
+    b.score = Math.max(b.score, Math.max(0, (x.pos === 1 && t === 0 ? 100 : 95 - 70 * (x.pos - 1) / (TIER_SIZE - 1)) - 15 * t));
+    b.champion ||= t === 0 && x.pos === 1;
+    b.rank = Math.min(b.rank, t * TIER_SIZE + x.pos);
+  }));
+  const reg = C.ruleNext?.season === C.season + 1 ? C.ruleNext.size : null, n = C.pairs.length;
+  for (const [ref, P] of Object.entries(C.progs)) {
+    const b = best[ref] ?? { prize: 0, score: 0, champion: false, rank: n };
+    const mine = ref === C.player && C.mode === "team";
+    const out = G.closeSeason(P, C.rulesYear, { place: b.rank, n, champion: b.champion, prize: Math.round(b.prize * 10) / 10, score: b.score,
+      reg, season: C.season, ...(mine ? {} : { keepLedger: 1, keepLog: 0 }) }, C.rulesYear, roundsOf(C));
+    if (mine) for (const t of out.news) C.news.push({ season: C.season, text: t, mine: true });
+  }
+  if (reg != null) { C.news.push({ season: C.season, text: `New rules from season ${C.season + 1}: ${Math.round(reg * 100)}% of every team's know-how stops applying.` }); scheduleRules({ ...C, season: C.season + 1 }); }
+}
+
+// what drivers expect of each entry's programme (set on the pairs, not saved)
+function setProgExpect(C) {
+  for (const pr of C.pairs) Object.defineProperty(pr, "_prog", { value: C.progs ? progOffset(C, pr.ref) : 0, enumerable: false, configurable: true, writable: true });
+}
+
 // ---------- new career ----------
-export function newCareer(db, { seed, rulesYear = 2016, player = null, me = null, calMode = "fixed", iconicPow = ICONIC_POW.def }) {
+export function newCareer(db, { seed, rulesYear = 2016, player = null, me = null, calMode = "fixed", iconicPow = ICONIC_POW.def, prog = null, noProg = false }) {
   detachMe(db);
   const ix = index(db);
   const R = rngOf(seed, "init");
@@ -237,6 +319,7 @@ export function newCareer(db, { seed, rulesYear = 2016, player = null, me = null
   };
   attachMe(db, C);
   if (calMode !== "fixed") rollCalendar(db, C);
+  if (!noProg) initProgs(db, C, prog);
   startMarket(db, C);
   return C;
 }
@@ -337,6 +420,7 @@ function cpuPick(db, C, p, ranks, consensus) {
 // one round of offers. userOffers: { pair: { driver, years } } for the player's open entries;
 // staff: also let the CPU pick for the player's open entries without an offer.
 export function marketRound(db, C, { staff = false } = {}) {
+  setProgExpect(C);
   const M = C.market;
   if (M.done) return;
   M.round++;
@@ -408,6 +492,7 @@ export function marketRound(db, C, { staff = false } = {}) {
 export const userOpen = (C) => (C.market?.open ?? []).filter((p) => C.pairs[p].ref === C.player);
 // run rounds until the market closes or only the player's seats are left
 export function runMarket(db, C, maxRounds = 60) {
+  setProgExpect(C);
   for (let k = 0; k < maxRounds && !C.market.done; k++) {
     if (C.market.open.every((p) => C.pairs[p].ref === C.player) && !Object.keys(C.market.userOffers).length) break;
     if (C.mode === "driver" && C.market.myOffers.length) break;     // the player has offers to answer
@@ -431,6 +516,7 @@ const fmtMoney = (x) => `$${(Math.round(x * 10) / 10).toFixed(1)}M`;
 // ---------- season ----------
 export function startSeason(db, C) {
   if (C.market) closeMarket(db, C);
+  buildProgCars(db, C);
   C.phase = "season"; C.round = 0; C.results = []; C.pending = null;
 }
 // race config for round r, tier t
@@ -452,7 +538,9 @@ export function raceConfig(db, C, r, t) {
     laps, wet, mode: "relative", grid: "quali", seed: seedOf(C.seed, C.season, r, t), relReliability: true,
     entries: ps.map((p) => {
       const d = driverOf(C, p), pr = C.pairs[p];
-      return { driver: Number(d), season: ix.peaks.get(d).year, car: modelId(db, pr), mod: raceMod(db, pr), ...(pr.ref === C.player || (C.mode === "driver" && d === meId(C)) ? { mine: true } : {}) };
+      const m = raceMod(db, pr), g = progRaceMod(db, C, pr, r);
+      const mod = g ? { ...m, pace: m.pace + g.pace, rel: m.rel * g.mod.rel, deg: m.deg * g.mod.deg, lean: g.mod.lean, quali: g.mod.quali, pitS: g.mod.pitS, read: g.mod.read } : m;
+      return { driver: Number(d), season: ix.peaks.get(d).year, car: modelId(db, pr), mod, ...(pr.ref === C.player || (C.mode === "driver" && d === meId(C)) ? { mine: true } : {}) };
     }),
     career: { season: C.season, round: r, tier: t, pairs: ps },
   };
@@ -510,6 +598,11 @@ export function recordRace(db, C, cfg, out, calls) {
 }
 function finishRound(db, C) {
   C.round++;
+  for (const [ref, P] of Object.entries(C.progs ?? {})) {
+    const news = G.roundTick(P, C.rulesYear, C.round, roundsOf(C));
+    if (ref === C.player && C.mode === "team") for (const t of news) C.news.push({ season: C.season, text: t, mine: true });
+    else if (P.ai != null) P.log = [];
+  }
   if (C.round >= roundsOf(C)) C.phase = "review";
 }
 // tier standings for the current season
@@ -549,6 +642,7 @@ export function endSeason(db, C) {
     tables.push(st.map((s, k) => ({ p: s.p, pos: k + 1, pts: s.pts, wins: s.wins, d: driverOf(C, s.p), model: C.pairs[s.p].model, prize: s.prize })));
     C.news.push({ season: C.season, text: `Tier ${t + 1} champion: ${pairName(C, st[0].p)} with ${dname(db, driverOf(C, st[0].p))}, ${st[0].pts} pts.` });
   }
+  closeProgs(db, C, tables);
   const moves = [];
   for (let t = 0; t < T - 1; t++) {
     const mv = Math.min(MOVE, tables[t + 1].length);          // a small last tier swaps as many as it has
@@ -598,11 +692,15 @@ export function buyUpgrade(C, p, stat) {
   return true;
 }
 // ---------- save files ----------
-export function serialize(C) { return JSON.stringify({ kind: "fantasy-gp-career", ...C }); }
+export function serialize(C) {
+  const progs = C.progs ? Object.fromEntries(Object.entries(C.progs).map(([r, P]) => [r, G.packProg(P)])) : undefined;
+  return JSON.stringify({ kind: "fantasy-gp-career", ...C, ...(progs ? { progs } : {}) });
+}
 export function deserialize(db, text) {
   const C = JSON.parse(text);
   if (C.kind !== "fantasy-gp-career" || !Array.isArray(C.pairs) || !C.teams) throw new Error("not a Fantasy GP career save");
   delete C.kind;
+  if (C.progs) for (const r of Object.keys(C.progs)) C.progs[r] = G.unpackProg(C.progs[r]);
   // older saves ran 16-round seasons: cut the calendar to ROUNDS (a season already past that ends now)
   if (C.calendar.length > ROUNDS) {
     const played = C.phase === "season" ? C.round + (C.pending ? 1 : 0) : 0;
@@ -614,6 +712,12 @@ export function deserialize(db, text) {
   repairCars(db, C);
   for (const pr of C.pairs) if (!ix.carAt.has(`${pr.ref}|${pr.model}`)) throw new Error(`unknown car ${pr.ref} ${pr.model}`);
   repairDrivers(db, C);
+  if (!C.progs) {                                  // careers before the programme: every team gets one; money -> cash
+    initProgs(db, C);
+    if (C.mode === "team" && C.player) C.progs[C.player].cash = Math.round(Math.max(0, C.teams[C.player].money ?? 0) * 200) / 100;
+    if (C.phase === "season" || C.phase === "review") buildProgCars(db, C);
+    C.news.push({ season: C.season, text: "Every team now runs a constructor programme. Upgrades already bought stay with their entries." });
+  }
   return C;
 }
 // makes a data update renamed (goldenera spellings merged): old team ref -> new
