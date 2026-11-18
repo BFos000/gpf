@@ -33,6 +33,23 @@ put("dry", "interlagos jarama kyalami rodriguez galvez ain-diab jacarepagua esto
 const eraOf = (y) => y < 1960 ? { barrier: "hedge", boards: 0 } : y < 1970 ? { barrier: "armco", boards: 0.25 }
   : y < 2000 ? { barrier: "armco", boards: 0.6 } : { barrier: "fence", boards: 0.8 };
 const DRESSING = ["armco_12", "bush", "bush_small", "tree", "tree_small", "conifer", "palm", "lamp", "board_nok", "board_gloy", "board_cabe", "board_inde"];
+// the look: each layer pulled toward the horizon's sky colour (haze) and desaturated, more with distance, so the
+// cars read against it; what stands right behind the cars (hillside, dressing, rail) is quieter and a little darker.
+export const LOOK = {
+  far:    { haze: 0.5, sat: 0.5, con: 0.6, mul: 1 },
+  mid:    { haze: 0.38, sat: 0.55, con: 0.65, mul: 1 },
+  near:   { haze: 0.25, sat: 0.6, con: 0.7, mul: 0.95 },
+  dress:  { haze: 0.2, sat: 0.5, con: 0.7, mul: 0.92 },
+  rail:   { haze: 0.15, sat: 1, con: 0.75, mul: 0.92 },
+  ground: { haze: 0.12, sat: 0.6, con: 1, mul: 0.85 },
+};
+// sat: toward grey; con: toward mid-grey (128), calming busy texture; haze: toward the horizon colour; mul: darken
+function grade(r, g, b, look, hz) {
+  const l = 0.3 * r + 0.59 * g + 0.11 * b;
+  const f = (c, h) => { c = l + (c - l) * look.sat; c = 128 + (c - 128) * look.con; return Math.max(0, Math.min(255, (c + (h - c) * look.haze) * look.mul)); };
+  return [f(r, hz[0]), f(g, hz[1]), f(b, hz[2])];
+}
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const hash = (n) => { let x = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
 
 export class Scenery {
@@ -68,7 +85,7 @@ export class Scenery {
     const era = eraOf(v.year ?? 2000), I = this.img;
     const { gx, gy, gd } = v, n = gx.length, sx = gx[1] - gx[0];
     const at = (arr, x) => { const f = (x - gx[0]) / sx, i = Math.max(0, Math.min(n - 2, Math.floor(f))), r = f - i; return arr[i] + r * (arr[i + 1] - arr[i]); };
-    const roadY = (xl) => (at(gy, xl * PS) - 6) / PS;          // the road's top edge, scenery px
+    const roadY = (xl) => (at(gy, xl * PS) - 6 - (v.back ?? 0)) / PS;   // the road's far edge, scenery px
     const dOf = (xl) => at(gd, xl * PS);
     const xOf = (d) => {                                         // screen x (scenery px) of a lap distance
       if (d <= gd[0] || d >= gd[n - 1]) return d <= gd[0] ? -1e4 : 1e4;
@@ -85,22 +102,23 @@ export class Scenery {
     sky.forEach((c, i) => { g.fillStyle = c; g.fillRect(0, Math.floor(i * rh), W, Math.ceil(rh) + 1); });
     g.fillStyle = sky.at(-1); g.fillRect(0, skyH, W, H - skyH);
     // horizon strips
-    for (const [key, ppm, dy, vk] of sc.layers) {
-      const im = I[key];
+    sc.layers.forEach(([key, ppm, dy, vk], li) => {
+      const im = this.graded(sc, key, ["far", "mid", "near"][li]);
       const y = Math.round(hz + dy + climb * vk - im.height);
       let ox = -((v.dF * ppm) % im.width); if (ox > 0) ox -= im.width;
       for (let x = Math.floor(ox); x < W; x += im.width) g.drawImage(im, x, y);
-    }
+    });
+    const grass = sc.grass.map((c) => this.colour(sc, c, "ground")), verge = sc.verge.map((c) => this.colour(sc, c, "ground"));
     // hillside: rows of two greens, 3 px each, following the contour
     const last = sc.layers.at(-1), nearBottom = Math.round(hz + last[2] + climb * last[3]);
     for (let x = 0; x < W; x++) {
       const yr = ry[x], yTop = Math.min(nearBottom - 1, yr - RAIL_OFF - 14);
-      for (let y = yTop; y < yr; ) { const b = Math.floor((yr - 1 - y) / 3), e = yr - b * 3; g.fillStyle = sc.grass[b % 2]; g.fillRect(x, y, 1, e - y); y = e; }
+      for (let y = yTop; y < yr; ) { const b = Math.floor((yr - 1 - y) / 3), e = yr - b * 3; g.fillStyle = grass[b % 2]; g.fillRect(x, y, 1, e - y); y = e; }
     }
     // roadside dressing (by distance slots: locked to the road)
     const k0 = v.carW / PS / 75;
     const spr = (name, d, lift, s) => {
-      const im = I[name]; const x = xOf(d);
+      const im = this.graded(sc, name, "dress"); const x = xOf(d);
       const ww = Math.max(2, Math.round(im.width * k0 * s)), hh = Math.max(2, Math.round(im.height * k0 * s));
       if (x < -ww || x > W + ww) return;
       g.drawImage(im, Math.round(x - ww / 2), Math.round(roadY(Math.max(0, Math.min(W, x)))) - RAIL_OFF - 2 - hh - lift, ww, hh);
@@ -113,7 +131,7 @@ export class Scenery {
     slots(26, (k, d) => { if (hash(k + 7) < 0.55) spr(sc.trees[hash(k + 3) < 0.6 ? 0 : 1], d, 4, 0.8 + hash(k + 11) * 0.35); });
     if (era.boards) slots(18, (k, d) => { if (hash(k + 101) < era.boards) spr(["board_nok", "board_gloy", "board_cabe", "board_inde"][Math.floor(hash(k + 5) * 4)], d, 0, 0.65); });
     // barrier: hedges, or the rail sheared to the contour (and a catch fence, modern)
-    const rail = I.armco_12;
+    const rail = this.graded(sc, "armco_12", "rail");
     if (era.barrier === "hedge") slots(4.5, (k, d) => spr(hash(k + 13) < 0.7 ? "bush_small" : "bush", d, -3, 0.75));
     else {
       const pxm = (dOf(W) - dOf(0)) > 0 ? W / (dOf(W) - dOf(0)) : 1;
@@ -131,11 +149,29 @@ export class Scenery {
       }
     }
     // verge: two greens by distance (6 m)
-    for (let x = 0; x < W; x++) { g.fillStyle = sc.verge[Math.floor((((dOf(x) % 12) + 12) % 12) / 6)]; g.fillRect(x, ry[x] - RAIL_OFF + 3, 1, RAIL_OFF + 2); }
+    for (let x = 0; x < W; x++) { g.fillStyle = verge[Math.floor((((dOf(x) % 12) + 12) % 12) / 6)]; g.fillRect(x, ry[x] - RAIL_OFF + 3, 1, RAIL_OFF + 2); }
     ctx.save(); ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.buf, 0, 0, W, H, 0, 0, W * PS, H * PS);
     ctx.restore();
     return true;
   }
+  // an image graded to a look (cached per scene, since the haze colour is the scene's horizon)
+  graded(sc, name, lk) {
+    const key = `${sc.sky}|${name}|${lk}`;
+    this.cache ??= new Map();
+    if (this.cache.has(key)) return this.cache.get(key);
+    const im = this.img[name], c = document.createElement("canvas");
+    c.width = im.width; c.height = im.height;
+    const g = c.getContext("2d"); g.drawImage(im, 0, 0);
+    try {
+      const d = g.getImageData(0, 0, c.width, c.height), p = d.data, hz = this.horizon(sc);
+      for (let i = 0; i < p.length; i += 4) { if (!p[i + 3]) continue; const q = grade(p[i], p[i + 1], p[i + 2], LOOK[lk], hz); p[i] = q[0]; p[i + 1] = q[1]; p[i + 2] = q[2]; }
+      g.putImageData(d, 0, 0);
+    } catch { /* tainted (file://): ungraded */ }
+    this.cache.set(key, c);
+    return c;
+  }
+  colour(sc, hex, lk) { const q = grade(...hexRgb(hex), LOOK[lk], this.horizon(sc)); return `rgb(${q.map(Math.round)})`; }
+  horizon(sc) { return this.meta?.[sc.sky]?.sky?.at(-1) ?? [170, 200, 220]; }
   skyOf(sc) { return (this.meta?.[sc.sky]?.sky ?? [[120, 180, 230]]).map((c) => `rgb(${c})`); }
 }

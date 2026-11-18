@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="v/9025dd2d43/">
+<base href="v/b067a4a29c/">
 <title>Fantasy GP</title>
 <meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
 <meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
@@ -94,8 +94,8 @@ label.inline { display: flex; gap: 6px; align-items: center; color: var(--muted)
 .flag.chq span { background: var(--bg); color: var(--fg); padding: 2px 6px; position: relative; top: 30px; font-size: 11px; white-space: nowrap; }
 
 .strip { grid-area: strip; }
-.zoom { position: absolute; left: 8px; bottom: 34px; display: flex; gap: 4px; }
-.zoom .btn { padding: 1px 8px; font-size: 13px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
+.zoom { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding-left: 10px; border-left: 1px solid var(--line); }
+.zoom .btn { padding: 1px 8px; font-size: 13px; }
 .zoom .hills { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .zoom .hills input { margin: 0; }
 .zoom .hills:has(input:disabled) { opacity: .5; cursor: default; }
@@ -375,7 +375,14 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
 
   <section class="panel strip" aria-label="On-track view of the focused car">
     <canvas id="stripcv"></canvas>
-    <div class="zoom">
+  </section>
+
+  <div class="panel ctl">
+    <button class="btn play" id="play" aria-label="Play">▶</button>
+    <div class="speeds" id="speeds"></div>
+    <input type="range" id="scrub" min="-3" max="100" step="0.1" value="0" aria-label="Race time">
+    <span class="clock" id="clock"></span>
+    <div class="zoom" role="group" aria-label="Strip view">
       <button class="btn" id="zin" title="Zoom in (or scroll on the strip)" aria-label="Zoom in">+</button>
       <button class="btn" id="zout" title="Zoom out" aria-label="Zoom out">−</button>
       <button class="btn" id="zfit" title="Show the cars around the focus driver">Pack</button>
@@ -384,13 +391,6 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
       <label class="btn hills" title="Show the track's hills on the strip"><input type="checkbox" id="hills" checked> Hills</label>
       <label class="btn hills" title="Scenery behind the strip (placeholder art)"><input type="checkbox" id="scenery" checked> Scenery</label>
     </div>
-  </section>
-
-  <div class="panel ctl">
-    <button class="btn play" id="play" aria-label="Play">▶</button>
-    <div class="speeds" id="speeds"></div>
-    <input type="range" id="scrub" min="-3" max="100" step="0.1" value="0" aria-label="Race time">
-    <span class="clock" id="clock"></span>
   </div>
 </div>
 <dialog id="setup" aria-label="Race setup">

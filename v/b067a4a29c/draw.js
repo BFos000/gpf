@@ -557,7 +557,7 @@ export class TrackMap {
 // shows a long run of the field. Cars outside the window become chips at the edges with their timing gap.
 export const ZOOM_MIN = 8, ZOOM_MAX = 1500;
 const CAR_LEN_M = 5.5;
-const EXAG = 3;                   // vertical exaggeration of the hills on the strip
+const EXAG = 1;                   // hills on the strip at true scale (no vertical exaggeration)
 // sprite width floor when zoomed out (legibility): 165 px, easing to 110 px at the far end of the zoom range;
 // a crowded view shrinks sprites further, never below CAR_FLOOR_PX. OVERLAP: neighbours may overlap by this share.
 const CAR_MIN_PX = 165, CAR_MIN_FAR_PX = 110, CAR_FLOOR_PX = 80, OVERLAP = 0.3;
@@ -587,7 +587,7 @@ export class PaperdollStrip {
       return f * lapT;
     };
     // terrain: each screen x is a time gap, mapped back to a point on the lap and its height. The focus car stays
-    // at the usual ground line unless the hills in view need room; heights are exaggerated (EXAG) and squeezed
+    // at the usual ground line unless the hills in view need room; heights are drawn at EXAG scale (true scale) and squeezed
     // to fit the strip when the view is long.
     const fProg = focus.progress ?? 0;
     const progAtX = (x) => (pb.progOfTime ? pb.progOfTime(fT + (x - w / 2) / pxs / lapT) : fProg + (x - w / 2) / pxm / L);
@@ -607,17 +607,20 @@ export class PaperdollStrip {
     const gY = (x) => { const f = (x - gx[0]) / SX, i = Math.max(0, Math.min(gx.length - 2, Math.floor(f))), r = f - i; return gy[i] + r * (gy[i + 1] - gy[i]); };
     const slope = (x, r) => Math.atan2(gY(x + r) - gY(x - r), 2 * r);
     // scenery behind the road (scenery.js): sky, horizon strips, hillside, roadside dressing, barrier
+    // with scenery, the road shows its far half behind the wheels (BACK px), so the cars sit on the asphalt
+    let back = 0;
     if (opts.scenery && this.scenery) {
+      back = 12;
       if (this.zRange?.[0] !== pb) { const Z = pb.track?.z ?? [0]; this.zRange = [pb, (Math.min(...Z) + Math.max(...Z)) / 2]; }
       const far0 = Math.min(1, Math.max(0, Math.log(this.half / 300) / Math.log(ZOOM_MAX / 300)));
       const carW0 = Math.min(400, Math.max(CAR_MIN_PX - (CAR_MIN_PX - CAR_MIN_FAR_PX) * far0, CAR_LEN_M * pxm));
-      this.scenery.draw(ctx, w, h, { gx, gy, gd, dF: fProg * L, zF: zAt ? zAt(fProg) : 0, zMid: zAt ? this.zRange[1] : 0,
-                                     carW: carW0, circuit: opts.circuit, year: opts.year });
+      if (!this.scenery.draw(ctx, w, h, { gx, gy, gd, dF: fProg * L, zF: zAt ? zAt(fProg) : 0, zMid: zAt ? this.zRange[1] : 0,
+                                     carW: carW0, circuit: opts.circuit, year: opts.year, back })) back = 0;
     }
     // road (to the bottom of the strip) with kerb stripes by distance (4 m, coarsened when pulled back)
     ctx.fillStyle = css("--road");
     ctx.beginPath(); ctx.moveTo(gx[0], h);
-    for (let k = 0; k < gx.length; k++) ctx.lineTo(gx[k], gy[k] - 6);
+    for (let k = 0; k < gx.length; k++) ctx.lineTo(gx[k], gy[k] - 6 - back);
     ctx.lineTo(gx.at(-1), h); ctx.closePath(); ctx.fill();
     let stripe = 4; while (stripe * pxm < 10) stripe *= 4;
     const kA = css("--kerb-a"), kB = css("--kerb-b");
@@ -628,7 +631,7 @@ export class PaperdollStrip {
       ctx.lineTo(gx[k + 1] + 0.5, gy[k + 1] + 19); ctx.lineTo(gx[k], gy[k] + 19); ctx.closePath(); ctx.fill();
     }
     ctx.strokeStyle = css("--track-edge"); ctx.lineWidth = 2;
-    ctx.beginPath(); gx.forEach((x, k) => (k ? ctx.lineTo(x, gy[k]) : ctx.moveTo(x, gy[k]))); ctx.stroke();
+    ctx.beginPath(); gx.forEach((x, k) => (k ? ctx.lineTo(x, gy[k] - (back ? 6 + back : 0)) : ctx.moveTo(x, gy[k] - (back ? 6 + back : 0)))); ctx.stroke();
     // gradient under the focus car (over 40 m of track)
     if (zAt && focus.idx !== null) {
       const g = (pb.zAt(fProg + 20 / L) - pb.zAt(fProg - 20 / L)) / 40;
@@ -757,6 +760,9 @@ export class PaperdollStrip {
       const col = opts.colour(s.c);
       // on a slope the car tilts with the road (wheels on the ground line)
       ctx.save(); ctx.translate(cx, yg); ctx.rotate(slope(cx, cw * 0.4));
+      // contact shadow on the road under the car (fading as it lifts into a passing lane)
+      ctx.fillStyle = `rgba(0,0,0,${(0.38 * (1 - Math.min(1, liftOf(n) / 30))).toFixed(2)})`;
+      ctx.beginPath(); ctx.ellipse(0, liftOf(n) + 1, cw * 0.47, Math.max(2, cw * 0.022), 0, 0, Math.PI * 2); ctx.fill();
       this.sprites.drawCar(ctx, s.c.car, s.c.driver, -cw / 2, 0, cw, col.fill, s.idx === null ? 0.5 : 1 - 0.15 * lane, helmetScale);
       ctx.restore();
       this.hit.push([x, yg - cw * 0.35, x + cw, yg, s.c.i]);
