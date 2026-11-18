@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="v/a7ee96131c/">
+<base href="v/e0aa055383/">
 <title>Fantasy GP</title>
 <meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
 <meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
@@ -473,6 +473,7 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
     <label for="su-wet">Weather <span id="su-wetv" class="v"></span><input id="su-wet" type="range" min="0" max="1" step="0.05"></label>
     <label for="su-mode" title="Field-relative: every car is rated against its own season's field (fair fight). Absolute: cars keep their era's real speed.">Car pace<select id="su-mode"><option value="relative">Field-relative (fair fight)</option><option value="absolute">Absolute (real era speed)</option></select></label>
     <label for="su-grid">Grid<select id="su-grid"><option value="quali">Simulated qualifying</option><option value="fixed">Order as listed</option></select></label>
+    <label for="su-mech" title="Off: no car breaks down (engines, gearboxes...). Crashes and damage still happen, and a real race's own retirements stay in its real laps.">Mechanical failures<select id="su-mech"><option value="on">On</option><option value="off">Off</option></select></label>
     <label for="su-seed">Seed<input id="su-seed" type="number" min="1"></label>
   </div>
   <div class="su-bar">
@@ -498,7 +499,7 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
       <label for="fb-car">Car<select id="fb-car"><option value="own">Their own car that season</option><option value="one">One car for everyone</option><option value="randera">Random car from the era range</option><option value="best">Fastest car of that season</option><option value="toppct">Random car from the fastest % of the era range</option><option value="botpct">Random car from the slowest % of the era range</option><option value="careerbest">Their best car of their career</option><option value="anybest">Fastest car of any season they raced</option><option value="keep">Keep current cars</option></select></label>
       <label for="fb-toppct" title="For &quot;Random car from the fastest / slowest %&quot;: the share of the era range's cars to pick from">Fastest / slowest %<input id="fb-toppct" type="number" min="1" max="100" value="20"></label>
       <label for="fb-onecar" title="For &quot;One car for everyone&quot;">The one car<input id="fb-onecar" list="dl-cars" placeholder="e.g. 1988 McLaren"></label>
-      <label for="fb-n">Field size<input id="fb-n" type="number" min="2" max="60" value="20"></label>
+      <label for="fb-n">Field size<input id="fb-n" type="number" min="2" max="200" value="20"></label>
       <label for="fb-order">Pick<select id="fb-order"><option value="best">Best first</option><option value="random">At random</option></select></label>
     </div>
     <div class="su-bar">
