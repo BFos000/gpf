@@ -68,7 +68,7 @@ export class Strategist {
     const life = R.tyreLife / lenF * Math.min(1.4, Math.max(0.7, Math.sqrt((R.era.deg || 0.01) * lenF / Math.max(c.deg, 1e-4))));
     this.life = life;
     // the strategist plans on its own read of tyre wear, which can be off (log-normal, READ_SD)
-    this.read = Math.exp(READ_SD * rng.normal());
+    this.read = Math.exp(READ_SD * (c.readMul ?? 1) * rng.normal());
     this.t = wearTable({ deg: c.deg * this.read }, life, R.baseLap, R.laps, R.lenF ?? 1);
     this.cache = new Map();
     this.bC = new Float64Array(R.laps + 2).fill(NaN); this.bK = new Int8Array(R.laps + 2);

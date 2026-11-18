@@ -9,7 +9,8 @@
 //   grid: "quali" | "fixed",        // qualifying sim, or entries order as given
 //   uncertainty?: true,             // draw driver/car ratings from their posterior per race
 //   entries: [{ driver: id, season: year, car: carId, mod?: { pace, deg, rel } }],
-//            mod (career upgrades): pace offset in pct of lap (negative = faster), tyre-wear and failure multipliers
+//            mod (career upgrades): pace offset in pct of lap (negative = faster), tyre-wear and failure multipliers;
+//            programme cars also: lean (power), quali (one-lap offset), degRel (replaces car.deg_rel), pitS, read
 //   relReliability?: true  // car failure rate taken relative to its own era, scaled to the rules year (mixed eras)
 //   calls?: [{ car: entryIndex, lap, action: "box" | "stay" | "stops" | "pace", value? }],
 //            user strategy calls (game/sim/strategy.js); every other car is run by its CPU strategist
@@ -104,6 +105,8 @@ export function setupRace(dbRaw, config, track = null) {
   const circuit = circuits.get(config.circuit);
   const layout = layoutFor(circuit, year, config.layout);
   const wet = clamp(config.wet ?? 0, 0, 1);
+  // power vs agility: the layout's power sensitivity (sd units; f1rank/gamedb/power.py) times each car's lean
+  const power = layout.power ?? 0;
   const unc = config.uncertainty !== false;
   const speedYears = db.speed.year;
   const bYear = (y) => speedYears[y] ?? speedYears[nearestYear(speedYears, y)];
@@ -135,6 +138,7 @@ export function setupRace(dbRaw, config, track = null) {
       * (mixYears ? eraCarScale(car.year) : 1);
     const absShift = config.mode === "absolute" ? 100 * (bYear(car.year) - bYear(year)) : 0;
     const m = e.mod ?? {};
+    const lean = ((car.power_lean ?? 0) + (m.lean ?? 0)) * power;   // % lap time; m.lean: the player's programme
     // relative reliability: the car's rate against its own era's (pre-war: that year's pre-war rate)
     const ownEra = car.year < 1950 && db.eras.prewar?.mech_per_lap?.[car.year] ? db.eras.prewar.mech_per_lap[car.year]
       : synthEra(db, car.year).p_mech_lap;
@@ -142,15 +146,16 @@ export function setupRace(dbRaw, config, track = null) {
       ? car.p_mech_lap / ownEra * era.p_mech_lap : car.p_mech_lap ?? era.p_mech_lap;
     return {
       i, driver: d.id, name: d.name, code: d.code, helmet: d.helmet, car: car.id, carName: car.name, carYear: car.year,
-      pace: carPace + absShift + sk("pace") + (m.pace ?? 0) + (useCls ? car.cls_offset ?? 0 : 0),
-      quali: carPace + absShift + sk("quali") + (m.pace ?? 0) + (useCls ? car.cls_offset ?? 0 : 0),
+      pace: carPace + absShift + sk("pace") + (m.pace ?? 0) + lean + (useCls ? car.cls_offset ?? 0 : 0),
+      quali: carPace + absShift + sk("quali") + (m.pace ?? 0) + (m.quali ?? 0) + lean + (useCls ? car.cls_offset ?? 0 : 0),
       starts: sk("starts"),
-      deg: Math.max(era.deg + (car.deg_rel ?? 0) + sk("deg"), 0) * wScale * (m.deg ?? 1) * lenF,
+      deg: Math.max(era.deg + (m.degRel ?? car.deg_rel ?? 0) + sk("deg"), 0) * wScale * (m.deg ?? 1) * lenF,
       sigma: era.sigma * Math.exp(sk("consistency")) * (1 + wet) / Math.sqrt(lenF),
       pLoss: perLen(era.p_loss * Math.exp(sk("errors")) * (1 + 2 * wet), lenF),
       wetLoad: 1 + sk("wet"),
       attack: sk("attack"), defence: sk("defence"),
       pMech: perLen(pMech * (m.rel ?? 1), lenF),
+      pitS: m.pitS ?? 0, readMul: m.read ?? 1,         // programme race operations: crew time per stop (s), strategist's wear read
       pInc: perLen(INCIDENT_SCALE * era.p_incident_lap * Math.exp(sk("errors")) * (1 + 2 * wet), lenF),
     };
   });
@@ -354,7 +359,7 @@ export function simulateRace(dbRaw, config, track = null) {
       outl[i] = boxedLast[i];
       const noise = rng.normal(0, 1.0);                 // drawn every lap: strategy never shifts the RNG stream
       const repair = inl[i] && damage[i] > 0 ? REPAIR_S : 0;
-      const pl = pitLoss * (sc ? 0.6 : 1) + (inl[i] || outl[i] ? noise : 0) + repair;
+      const pl = pitLoss * (sc ? 0.6 : 1) + (inl[i] || outl[i] ? noise : 0) + repair + (inl[i] || outl[i] ? c.pitS / 2 : 0);
       if (inl[i]) pitAdd[i] += pl * inShare;
       if (outl[i]) pitAdd[i] += pl * (1 - inShare);
       dur += pitAdd[i];
