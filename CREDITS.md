@@ -22,5 +22,11 @@ Names of drivers, teams and races are used to describe historical results.
 ## Fonts
 Titillium Web and IBM Plex Mono, from Google Fonts (SIL Open Font License).
 
+## Strip scenery (placeholder art)
+The parallax scenery behind the race strip is temporary placeholder art, to be replaced by art made for the game:
+horizon backgrounds from *Super Monaco GP* (Sega) and *Nigel Mansell's World Championship* (Gremlin Graphics) for
+the Mega Drive, and roadside objects from *GP Rider* (Sega, Game Gear), as ripped by Yawackhary for The Spriters
+Resource. All rights remain with their owners.
+
 ## Game
 Simulation, ratings, car and helmet art: made for this game.
