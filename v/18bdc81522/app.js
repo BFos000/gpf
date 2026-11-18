@@ -131,16 +131,18 @@ async function run(keep = false) {
       const rec = await getHistory(cfg.history.id);
       if (my !== runId) return;
       const { idx } = historyEntries(db, db._races.get(cfg.history.id), rec);
-      hist = { rec, idx, until: untilFor(cfg.calls) };
-      replay = replayOf(rec, idx, entries.length, hist.until);
+      hist = { rec, idx, until: untilFor(cfg.calls, rec, cfg.laps) };
+      replay = replayOf(rec, idx, entries.length, hist.until, cfg.laps);
     } catch (e) { console.warn("history:", e); }
   }
   const out = simulateRace(hist ? withExtras(db, hist.rec) : db, { seed: cfg.seed, year: cfg.year, circuit: cfg.circuit, layout: cfg.layout, laps: cfg.laps,
                                  wet: cfg.wet, grid: cfg.grid, mode: cfg.mode, entries, calls: cfg.calls ?? [],
                                  relReliability: !!cfg.relReliability, replay }, track);
-  if (hist && hist.until >= out.laps) officialResult(out, hist.rec, hist.idx);
+  const real = hist && hist.until >= out.laps && out.laps === hist.rec.laps;   // (a debug distance: not the real race)
+  if (real) officialResult(out, hist.rec, hist.idx);
   $("histchip").hidden = !hist;
-  if (hist) $("histchip").textContent = hist.until >= out.laps ? "Real race" : `Real to lap ${hist.until}, then yours`;
+  if (hist) $("histchip").textContent = real ? "Real race" : hist.until >= out.laps ? `Real laps, cut to ${out.laps}` : `Real to lap ${hist.until}, then ${out.laps === hist.rec.laps ? "yours" : `sim to lap ${out.laps}`}`;
+  $("dbg-laps").value = out.laps;
   // a real race: the cars' real numbers (the record's), for the timing tower and the strip labels
   const rid = hist ? cfg.history.id : cfg.raceId;
   if (rid && histIds.has(rid)) {
@@ -552,6 +554,13 @@ async function main() {
   $("seasonchip").addEventListener("click", () => season.open());
   $("opensetup").addEventListener("click", () => { cfg.seed = Number($("seed").value) || cfg.seed; setup.open(cfg); });
   $("go").addEventListener("click", () => run());
+  // debug: the current race's distance. The race is run again at the new length from the same seed, the clock kept;
+  // a real race keeps its real laps (to the last lap every classified car ran) and the sim races on from there
+  $("dbg-apply").addEventListener("click", () => {
+    const n = Math.round(Number($("dbg-laps").value));
+    if (!cfg || !(n >= 1 && n <= 400)) return;
+    cfg.laps = n; run(true);
+  });
   $("reseed").addEventListener("click", () => { delete cfg.seasonRound; delete cfg.career; delete cfg.real; $("seed").value = 1 + Math.floor(Math.random() * 99999); run(); });
   $("race").addEventListener("change", loadRealRace);
   $("realrep").checked = store.get("realrep") ?? true;

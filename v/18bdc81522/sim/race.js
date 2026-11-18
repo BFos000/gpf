@@ -495,7 +495,7 @@ export function simulateRace(dbRaw, config, track = null) {
     // retirements during the next lap (recorded at this lap's end, fraction f into the next)
     if (fz) {
       // replay: a car whose record ends here is out (a classified car has taken its flag)
-      for (let i = 0; i < n; i++) if (alive[i] && RP.t[i].length === lap && lap < laps) {
+      for (let i = 0; i < n; i++) if (alive[i] && RP.t[i].length === lap && lap < laps && !(RP.ext && RP.fin?.[i])) {
         alive[i] = false;
         if (!RP.fin?.[i]) events.push({ lap: lap + 1, type: "retire", c: i, cause: RP.cause?.[i] ?? "mechanical", f: 0.1 + 0.8 * rng.u(), text: RP.why?.[i] ?? null });
       }

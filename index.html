@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="v/cb913757de/">
+<base href="v/18bdc81522/">
 <title>Fantasy GP</title>
 <meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
 <meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
@@ -331,6 +331,11 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
 .pg-news { margin-top: 8px; } .pg-news summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .pg-news .cr-log { max-height: 140px; overflow-y: auto; margin-top: 4px; }
 .btn.on { border-color: var(--accent); color: var(--accent); }
+.dbg { position: relative; } .dbg summary { list-style: none; cursor: pointer; color: var(--muted); padding: 2px 4px; opacity: .6; }
+.dbg summary::-webkit-details-marker { display: none; }
+.dbg-pop { position: absolute; z-index: 20; top: 130%; left: 0; background: var(--panel, #161a20); border: 1px solid var(--line, #333);
+  border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; white-space: nowrap; }
+.dbg-pop input { width: 64px; }
 </style>
 
 <div class="app" id="app">
@@ -345,6 +350,11 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
     <label class="inline" for="seed">Seed <input id="seed" type="number" min="1" step="1" value="1"></label>
     <button class="btn" id="reseed" title="Run again with a new random seed">New seed</button>
     <button class="btn primary" id="go">Run race</button>
+    <details class="dbg"><summary title="Debug settings">⚙</summary>
+      <div class="dbg-pop"><b>Debug</b>
+        <label for="dbg-laps">Race distance <input id="dbg-laps" type="number" min="1" max="400" step="1"> laps</label>
+        <button class="btn small" id="dbg-apply" title="Run this race again at this distance (same seed); a real race keeps its real laps and the sim races on">Apply</button>
+      </div></details>
     <span class="spacer"></span>
     <span class="chip" id="histchip" hidden title="Real race: every lap from the timing data. Take control of a car and make a call to race on from that lap."></span>
     <span class="chip" id="wx"></span>

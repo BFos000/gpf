@@ -44,8 +44,9 @@ export function recordLap(rec) {
   return xs.length ? xs[Math.floor(xs.length / 2)] : null;
 }
 
-/** config.replay for simulateRace: the record in entry order, forced through lap `until` (default: all of it) */
-export function replayOf(rec, idx, nEntries, until = Infinity) {
+/** config.replay for simulateRace: the record in entry order, forced through lap `until` (default: all of it).
+ *  laps: the race's distance when it differs from the record's (debug: a race stopped early run to a longer one) */
+export function replayOf(rec, idx, nEntries, until = Infinity, laps = rec.laps) {
   const t = Array.from({ length: nEntries }, () => []), pit = Array.from({ length: nEntries }, () => []);
   const fin = new Array(nEntries).fill(false), cause = new Array(nEntries).fill("mechanical"), why = new Array(nEntries).fill(null);
   const s0 = new Array(nEntries).fill(0);               // a staggered start: when each car leaves the line (s)
@@ -61,13 +62,21 @@ export function replayOf(rec, idx, nEntries, until = Infinity) {
   });
   // narration (record `nar`: [{lap, text, c?: record car, q?: a quote, src?}]): terse factual lines or report quotes
   const nar = (rec.nar ?? []).map((x) => ({ lap: x.lap, text: x.text, q: !!x.q, src: x.src ?? null, c: x.c != null ? idx[x.c] ?? null : null }));
-  return { until, t, pit, fin, cause, why, sc: rec.sc, vsc: rec.vsc, red: rec.red ?? [], baseLap: recordLap(rec), nar, s0 };
+  // a longer race than the record: the classified cars race on (ext), and a red flag that ended the race is dropped
+  const ext = laps > rec.laps, red = (rec.red ?? []).filter((l) => !(ext && l >= rec.laps - 1));
+  return { until, t, pit, fin, cause, why, sc: rec.sc, vsc: rec.vsc, red, baseLap: recordLap(rec), nar, s0, ext };
 }
 
-/** the replay cut by the player's calls: forced up to the lap before the first call */
-export function untilFor(calls) {
+/** the replay cut by the player's calls: forced up to the lap before the first call. A race longer than the record
+ *  (rec, laps given): forced only up to the last lap every classified car ran (a lapped finisher has fewer) */
+export function untilFor(calls, rec = null, laps = null) {
   const ls = (calls ?? []).map((c) => c.lap).filter((l) => l != null);
-  return ls.length ? Math.min(...ls) - 1 : Infinity;
+  let u = ls.length ? Math.min(...ls) - 1 : Infinity;
+  if (rec && laps != null && laps > rec.laps) {
+    const fin = rec.cars.map((c, k) => (c.cat === "finished" ? rec.t[k].length : Infinity));
+    u = Math.min(u, ...fin, rec.laps);
+  }
+  return u;
 }
 
 /** a full replay's result in the official order (penalties after the flag, etc.): positions from the record */
