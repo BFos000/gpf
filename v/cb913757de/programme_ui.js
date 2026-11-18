@@ -95,7 +95,7 @@ function deptsView(ctx) {
 }
 function logHTML(ctx) {
   const L = ctx.P.log.slice(-14).reverse();
-  return L.length ? `<h4>Programme news</h4><ul class="cr-log">${L.map((x) => `<li>${x.season != null ? `S${x.season}` : x.year}: ${esc(x.text)}</li>`).join("")}</ul>` : "";
+  return L.length ? `<details class="pg-news"><summary>Programme news (${L.length})</summary><ul class="cr-log">${L.map((x) => `<li>${x.season != null ? `S${x.season}` : x.year}: ${esc(x.text)}</li>`).join("")}</ul></details>` : "";
 }
 
 // ---------- the car ----------

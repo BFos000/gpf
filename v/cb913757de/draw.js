@@ -550,6 +550,25 @@ export class TrackMap {
 }
 
 // ---------- side-on paperdoll strip ----------
+// a car on another lap: drawn into a reusable offscreen canvas, darkened there (source-atop fill, no canvas filter:
+// filters are slow), then copied at the current transform (wheels at y = 0, centred on x = 0). false: no canvas here.
+export function dimCarImpl(self, ctx, s, cw, fill, alpha, helmetScale) {
+  if (typeof document === "undefined" || typeof document.createElement !== "function") return false;
+  const pad = Math.ceil(cw * 0.1), W = Math.ceil(cw) + 2 * pad, H = Math.ceil(cw * 0.7) + pad;
+  let cv = self._dim;
+  if (!cv) cv = self._dim = document.createElement("canvas");
+  if (cv.width < W || cv.height < H) { cv.width = Math.max(cv.width, W); cv.height = Math.max(cv.height, H); }
+  const c = cv.getContext("2d"); if (!c) return false;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = "source-over"; c.globalAlpha = 1;
+  c.clearRect(0, 0, W, H);
+  self.sprites.drawCar(c, s.c.car, s.c.driver, pad, H, cw, fill, 1, helmetScale);
+  c.globalCompositeOperation = "source-atop"; c.fillStyle = "rgba(40,44,50,0.62)"; c.fillRect(0, 0, W, H);
+  c.globalCompositeOperation = "source-over";
+  const a0 = ctx.globalAlpha; ctx.globalAlpha = alpha;
+  ctx.drawImage(cv, 0, 0, W, H, -cw / 2 - pad, -H, W, H);
+  ctx.globalAlpha = a0;
+  return true;
+}
 // The focus car sits in the middle; other cars are placed by their time gap: how long the focus car, at its
 // current lap pace and the track's speed profile, takes to reach where that car is now (so a gap reads the
 // same on a straight as in a hairpin). The zoom (half-window) is held in metres at the lap's mean speed;
@@ -564,6 +583,7 @@ const CAR_MIN_PX = 165, CAR_MIN_FAR_PX = 110, CAR_FLOOR_PX = 80, OVERLAP = 0.3;
 export class PaperdollStrip {
   constructor(cv, sprites) { this.cv = cv; this.sprites = sprites; this.half = 60; this.hit = []; }
   zoomBy(f) { this.half = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, this.half * f)); }
+  dimCar(ctx, s, cw, fill, alpha, helmetScale) { return dimCarImpl(this, ctx, s, cw, fill, alpha, helmetScale); }
   pick(x, y) {                         // topmost car under the point
     for (let k = this.hit.length - 1; k >= 0; k--) { const [x0, y0, x1, y1, i] = this.hit[k]; if (x >= x0 && x <= x1 && y >= y0 && y <= y1) return i; }
     return null;
@@ -765,8 +785,8 @@ export class PaperdollStrip {
       // contact shadow on the road under the car (fading as it lifts into a passing lane)
       ctx.fillStyle = `rgba(0,0,0,${(0.38 * (1 - Math.min(1, liftOf(n) / 30))).toFixed(2)})`;
       ctx.beginPath(); ctx.ellipse(0, liftOf(n) + 1, cw * 0.47, Math.max(2, cw * 0.022), 0, 0, Math.PI * 2); ctx.fill();
-      if (other) { if ("filter" in ctx) ctx.filter = "brightness(0.5) saturate(0.35)"; ctx.globalAlpha = 0.75; }
-      this.sprites.drawCar(ctx, s.c.car, s.c.driver, -cw / 2, 0, cw, col.fill, s.idx === null ? 0.5 : 1 - 0.15 * lane, helmetScale);
+      const alpha = s.idx === null ? 0.5 : 1 - 0.15 * lane;
+      if (!other || !this.dimCar(ctx, s, cw, col.fill, alpha * 0.8, helmetScale)) this.sprites.drawCar(ctx, s.c.car, s.c.driver, -cw / 2, 0, cw, col.fill, alpha, helmetScale);
       ctx.restore();
       this.hit.push([x, yg - cw * 0.35, x + cw, yg, s.c.i]);
       if (minSep >= 70 || isF || drawn.length < 8) {
