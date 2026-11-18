@@ -758,16 +758,18 @@ export class PaperdollStrip {
       const cw = carW * scale;
       const x = cx - cw / 2, yg = gY(cx) - liftOf(n);
       const col = opts.colour(s.c);
+      // a car on another lap than the focus car (lapped, or lapping it): drawn darkened, with a smaller, greyer label
+      const lapsApart = isF ? 0 : Math.round(s.progress - focus.progress - d / L), other = lapsApart !== 0;
       // on a slope the car tilts with the road (wheels on the ground line)
       ctx.save(); ctx.translate(cx, yg); ctx.rotate(slope(cx, cw * 0.4));
       // contact shadow on the road under the car (fading as it lifts into a passing lane)
       ctx.fillStyle = `rgba(0,0,0,${(0.38 * (1 - Math.min(1, liftOf(n) / 30))).toFixed(2)})`;
       ctx.beginPath(); ctx.ellipse(0, liftOf(n) + 1, cw * 0.47, Math.max(2, cw * 0.022), 0, 0, Math.PI * 2); ctx.fill();
+      if (other) { if ("filter" in ctx) ctx.filter = "brightness(0.5) saturate(0.35)"; ctx.globalAlpha = 0.75; }
       this.sprites.drawCar(ctx, s.c.car, s.c.driver, -cw / 2, 0, cw, col.fill, s.idx === null ? 0.5 : 1 - 0.15 * lane, helmetScale);
       ctx.restore();
       this.hit.push([x, yg - cw * 0.35, x + cw, yg, s.c.i]);
       if (minSep >= 70 || isF || drawn.length < 8) {
-        const lapsApart = Math.round(s.progress - focus.progress - d / L);
         const g = isF ? "" : lapsApart ? ` ${lapsApart > 0 ? "+" : "−"}${Math.abs(lapsApart)}L` : (() => { const v = rel(focus) - rel(s); return ` ${v >= 0 ? "−" : "+"}${Math.abs(v).toFixed(1)}`; })();
         // labels on two tiers (alternating out from the focus car) so neighbours' labels don't collide
         // (a stacked pair: the upper car's label on the top tier, the road car's label below it)
@@ -775,19 +777,22 @@ export class PaperdollStrip {
         const y = tier ? 50 : 16;
         const room = minSep * 2 - 8;                     // same-tier neighbours are two slots apart
         ctx.textAlign = "center";
-        ctx.font = `700 12px ${css("--font-data")}`;
+        const F1 = other ? `600 10px ${css("--font-data")}` : `700 12px ${css("--font-data")}`, F2 = other ? `500 9px ${css("--font-data")}` : `500 11px ${css("--font-data")}`;
+        ctx.font = F1;
         const no = s.c.no ? `#${s.c.no} ` : "";            // a real race: the car's real number
         const full = `P${s.pos} ${no}${s.c.name ?? ""}${g}`, short = `P${s.pos} ${no}${(s.c.name ?? "").split(" ").at(-1)}${g}`;
         const l1 = ctx.measureText(full).width <= room ? full : short;
         const w1 = ctx.measureText(l1).width;
         const l2 = `${s.c.carYear ?? ""} ${s.c.carName ?? ""}`;
-        ctx.font = `500 11px ${css("--font-data")}`;
-        const tw = Math.max(w1, ctx.measureText(l2).width) + 10;
-        ctx.fillStyle = "rgba(13,16,20,.6)";
-        ctx.fillRect(cx - tw / 2, y - 12, tw, 30);
-        ctx.fillStyle = css("--muted"); ctx.fillText(l2, cx, y + 13);
-        ctx.font = `700 12px ${css("--font-data")}`;
-        ctx.fillStyle = isF ? css("--accent") : css("--fg");
+        ctx.font = F2;
+        const tw = Math.max(w1, ctx.measureText(l2).width) + (other ? 8 : 10);
+        ctx.fillStyle = other ? "rgba(13,16,20,.45)" : "rgba(13,16,20,.6)";
+        ctx.fillRect(cx - tw / 2, y - (other ? 10 : 12), tw, other ? 24 : 30);
+        ctx.fillStyle = css("--muted"); if (other) ctx.globalAlpha = 0.7;
+        ctx.fillText(l2, cx, y + (other ? 11 : 13));
+        ctx.globalAlpha = 1;
+        ctx.font = F1;
+        ctx.fillStyle = isF ? css("--accent") : other ? css("--muted") : css("--fg");
         ctx.fillText(l1, cx, y);
         ctx.textAlign = "left";
       }

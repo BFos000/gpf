@@ -238,6 +238,18 @@ export function progMod(db, S, ref, r = S.round) {
   return { pace: r2(sc.pace - (car?.pace ?? f.med)), rel: r2(sc.mod.rel * f.mechMed / pm), deg: sc.mod.deg, degRel: f.degMed ?? 0,
            lean: r2(sc.mod.lean - (car?.power_lean ?? 0)), quali: sc.mod.quali, pitS: sc.mod.pitS, read: sc.mod.read };
 }
+// an old save's team (upgrade levels, money in $M) as a programme: calibrated so its car matches the car it had,
+// upgrades included; money becomes cash
+function migrateProg(db, S) {
+  const ref = S.player.team, y = S.year, f = G.fieldOf(db, y);
+  const pace = (rsIndex(db).cars.get(teamOf(S, ref)?.car)?.pace ?? f.med) + (upMod(db, S, ref)?.pace ?? 0);
+  const base = G.presetForCar(f, pace, y), c = G.calibrate(base, y, base.target, S.seed);
+  const P = G.newProgramme({ ...c, staff: Math.round(c.staff), fac: Math.round(c.fac), know: Math.round(c.know), patience: 2, mentees: true }, y, S.seed);
+  P.cash = Math.round(Math.max(0, S.money ?? 0) * 200) / 100;
+  P.mig = 2;
+  if (S.phase === "season" || S.phase === "review") G.buildCar(P, y);
+  return P;
+}
 // the player's car pace (offseason: the projection's expected index)
 function progPace(db, S) {
   const f = G.fieldOf(db, S.year), P = S.prog;
@@ -682,10 +694,16 @@ export function deserialize(db, text) {
   if (S.kind !== KIND) throw new Error("not a Real Seasons save");
   rsIndex(db);
   if (S.custom && !S.custom.livery) S.custom.livery = defaultLivery(S.custom.colours);
-  if (S.mode === "team" && !S.prog) {                          // saves before the programme: levels -> know-how, money -> cash
-    S.prog = G.migrateUpgrades(G.newProgramme(progDefaults(db, S.player.team, S.year), S.year, S.seed), S.up, S.money);
-    if (S.phase === "season" || S.phase === "review") G.buildCar(S.prog, S.year);
-    S.news.push({ year: S.year, text: "Your team now runs a full programme: the upgrade levels became know-how and facilities.", mine: true });
+  if (S.mode === "team" && !S.prog) {                          // saves before the programme: same car, money -> cash
+    S.prog = migrateProg(db, S);
+    S.news.push({ year: S.year, text: "Your team now runs a full programme, set up to match the car you had (upgrades included).", mine: true });
+  } else if (S.mode === "team" && S.prog && !S.prog.mig && !S.prog.ledger.length && S.up
+             && S.news.some((x) => x.year === S.year && /now runs a full programme/.test(x.text))) {
+    // converted by the first version (v-programme 1), which ignored what the upgrades were worth: convert again
+    const was = S.prog.car ? S.prog.car.index : G.projection(S.prog, S.year).mu;
+    S.prog = migrateProg(db, S);
+    const now = S.prog.car ? S.prog.car.index : G.projection(S.prog, S.year).mu;
+    S.news.push({ year: S.year, text: `Programme conversion corrected: car index ${was.toFixed(0)} -> ${now.toFixed(0)}, matching your upgraded car.`, mine: true });
   }
   attach(db, S);
   repairRetired(db, S);
