@@ -11,6 +11,10 @@ Names of drivers, teams and races are used to describe historical results.
   game are computed from them. The historical race replays rebuild pre-war races from their lap standings, pit
   stops and fastest laps, and the replay's race feed quotes short passages of their race reports, marked
   "(goldenera.fi)".
+- **Race reports (Wikipedia):** the English Wikipedia articles on the individual races (https://en.wikipedia.org),
+  by their contributors, CC BY-SA 4.0. Facts stated in the reports (gaps, pit stops, who led) help rebuild the
+  historical replays, and the replay's race feed quotes short passages of them, unchanged, marked "(Wikipedia)".
+  Each quote comes from the article on that race (e.g. https://en.wikipedia.org/wiki/1957_German_Grand_Prix).
 - **Circuit outlines:** bacinger/f1-circuits (https://github.com/bacinger/f1-circuits), MIT licence.
 - **Track layouts:** © OpenStreetMap contributors (https://www.openstreetmap.org/copyright), Open Database Licence
   (ODbL 1.0). The track geometry derived from it is available under the ODbL on request.
