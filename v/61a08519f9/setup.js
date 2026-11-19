@@ -7,6 +7,7 @@ import { eraCarScale } from "./sim/race.js";
 import { carThumb } from "./thumbs.js";
 
 const $ = (id) => document.getElementById(id);
+const MAX_FIELD = 200;                 // the field builder's largest field (cars)
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem("fgp." + k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem("fgp." + k, JSON.stringify(v)); return true; } catch { return false; } },
@@ -115,7 +116,7 @@ export class Setup {
     return { from: Math.min(from, to), to: Math.max(from, to), nat: $("fb-nat").value, pool: $("fb-pool").value,
              minSea: clampInt($("fb-minsea").value, 1, 30, 1), top: clampInt($("fb-top").value, 0, 5000, 0),
              name: $("fb-name").value.trim().toLowerCase(), season: $("fb-season").value, car: $("fb-car").value,
-             n: clampInt($("fb-n").value, 2, 60, 20), order: $("fb-order").value,
+             n: clampInt($("fb-n").value, 2, MAX_FIELD, 20), order: $("fb-order").value,
              topPct: clampInt($("fb-toppct")?.value, 1, 100, 20) };
   }
   // drivers matching the filters, best first: [{ d, season, score }], the season chosen by the season rule
@@ -273,6 +274,7 @@ export class Setup {
     $("su-wet").value = c.wet ?? 0; $("su-wetv").textContent = wetText(c.wet ?? 0);
     $("su-mode").value = c.mode ?? "relative";
     $("su-grid").value = c.grid ?? "quali";
+    $("su-mech").value = c.noMech ? "off" : "on";
     $("su-seed").value = c.seed ?? 1;
     const tb = $("su-entries");
     tb.innerHTML = "";
@@ -311,6 +313,7 @@ export class Setup {
     c.year = clampInt($("su-year").value, 1906, 2026, c.year);
     c.laps = clampInt($("su-laps").value, 1, 120, c.laps);
     c.wet = Number($("su-wet").value); c.mode = $("su-mode").value; c.grid = $("su-grid").value;
+    c.noMech = $("su-mech").value === "off";
     c.seed = clampInt($("su-seed").value, 1, 1e9, 1);
     c.entries.forEach((e, k) => {
       const d = this.driverByLabel.get($(`su-d${k}`)?.value); if (d) e.driver = d.id;

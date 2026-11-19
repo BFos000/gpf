@@ -137,7 +137,7 @@ async function run(keep = false) {
   }
   const out = simulateRace(hist ? withExtras(db, hist.rec) : db, { seed: cfg.seed, year: cfg.year, circuit: cfg.circuit, layout: cfg.layout, laps: cfg.laps,
                                  wet: cfg.wet, grid: cfg.grid, mode: cfg.mode, entries, calls: cfg.calls ?? [],
-                                 relReliability: !!cfg.relReliability, replay }, track);
+                                 relReliability: !!cfg.relReliability, noMech: !!cfg.noMech, replay }, track);
   const real = hist && hist.until >= out.laps && out.laps === hist.rec.laps;   // (a debug distance: not the real race)
   if (real) officialResult(out, hist.rec, hist.idx);
   $("histchip").hidden = !hist;
@@ -195,6 +195,14 @@ function seasonChip() {
 }
 
 // ---------- pit wall ----------
+// collapsible: folded, the race feed takes the whole side column (remembered)
+function setPitWallOpen(open) {
+  document.querySelector(".pitwall").classList.toggle("collapsed", !open);
+  $("pw-toggle").setAttribute("aria-expanded", String(open));
+  store.set("pitwall", open);
+}
+setPitWallOpen(store.get("pitwall") ?? true);
+$("pw-toggle").addEventListener("click", () => setPitWallOpen($("pw-toggle").getAttribute("aria-expanded") !== "true"));
 const isMine = (i) => !!cfg.entries[i]?.mine;
 let lastPw = "";
 function updatePitWall(snap) {
@@ -392,7 +400,7 @@ function render(force = false) {
   const wxSel = $("dbg-wx").value, ltSel = $("dbg-light").value;
   const wet = wxSel === "auto" ? (raceInfo?.cfg.wet ?? 0) : Number(wxSel);
   const night = ltSel === "auto" ? isNightRace(raceInfo?.cfg.circuit, raceInfo?.cfg.year) : ltSel === "night";
-  strip.draw(snap, pb, { focus, colour, hills: $("hills").checked, scenery: $("scenery").checked,
+  strip.draw(snap, pb, { focus, colour, hills: $("hills").checked, scenery: $("scenery").checked, speed: playing ? speed : 1,
                         circuit: raceInfo?.cfg.circuit, year: raceInfo?.cfg.year, wet, night });
   const now = performance.now();
   if (force || now - lastUi > 120) {

@@ -11,6 +11,7 @@ export function buildPlayback(out, track) {
   track = out._track?.x === track.x ? out._track : track;   // the era profile the sim used (sim/profile.js)
   const N = track.x.length, L = track.length_m;
   const tt = track.t;
+  const S0 = track.start_idx ?? 0;          // the start (grid) line from the finish line, in samples (Spa, Long Beach)
   const secT = [0, tt[track.sectors[0]], tt[track.sectors[1]], 1];
   const nLaps = out.laps;
   const res = new Map(out.result.map((r) => [r.c, r]));
@@ -52,7 +53,13 @@ export function buildPlayback(out, track) {
         const lapA = ahead && row.find((y) => y.c === ahead.c);
         if (lapA && !lapA.pit) typical = Math.max(typical, lapA.cum + 0.4 - last.end);
       }
-      c.retT = (last ? last.end : c.s0 ?? 0) + ret.f * typical;     // (a staggered start: from the car's own start)
+      // it stops where the lap's time profile reaches ret.f of the distance, at its own pace: timed by distance share
+      // alone, a car stopping late on a lap whose early part is slow had to run ahead of its pace to get there in time
+      // (a long lap: it surged through the field just before it stopped). On lap 1 it drives from its grid slot.
+      const gs0 = S0 - ((c.grid - 1) * GRID_SLOT_M + 6) / track.step_m;
+      const F0 = last ? 0 : gs0 < 0 ? tAtIdx(gs0 + N) - 1 : tAtIdx(gs0);
+      c.retT = (last ? last.end : c.s0 ?? 0) + Math.max(0.02, tAtIdx(ret.f * N) - F0) * typical;   // (staggered start: its own)
+      c.retF0 = F0;
       c.retFrac = ret.f; c.retLap = ret.lap; c.retCause = ret.cause; c.retDur = typical;
     }
     // a lap far off the car's pace without a stop (a puncture, a spin, a repair out on the course): the car runs its
@@ -244,6 +251,7 @@ export function buildPlayback(out, track) {
   // state of car c at time t
   function carAt(c, t) {
     const g = (c.grid - 1) * GRID_SLOT_M + 6;
+    const gs = S0 - g / track.step_m;          // grid slot, samples from the finish line (negative: on the lap before)
     if (t >= c.finT) {
       return { state: "fin", done: c.finLap, idx: Math.min(300, 12 + (t - c.finT) * 15) / track.step_m, progress: c.finLap + 1e-3 * (c.finT - t) };
     }
@@ -252,18 +260,19 @@ export function buildPlayback(out, track) {
       return { state: "dnf", done: c.retLap - 1, idx, progress: -1000 - (tEnd - c.retT) };
     }
     const s0 = c.s0 ?? 0;                      // a staggered start: the car waits on the line until its turn
-    if (t <= s0) return { state: "grid", done: 0, idx: (N - g / track.step_m) % N, progress: -g / L - 1e-6 * s0 };
+    if (t <= s0) return { state: "grid", done: 0, idx: ((gs % N) + N) % N, progress: gs / N - 1e-6 * s0 };
     const k = findLap(c, t);
     const lp = c.laps[k];
     if (!lp) {                                 // retired on lap 1 before completing it: crawl to the retirement point
-      const u = Math.min(1, (t - s0) / Math.max(1e-6, c.retT - s0)), p0 = -g / L;    // from its grid slot
-      const f = p0 + (c.retFrac - p0) * u;
-      return { state: "run", done: 0, idx: (((f % 1) + 1) % 1) * N, progress: f };
+      // from its grid slot at its own pace along the time profile, up to the stopping point
+      const ff = Math.min(tAtIdx(c.retFrac * N), (c.retF0 ?? 0) + (t - s0) / c.retDur);
+      const idx = ff < 0 ? idxOfT(ff + 1) : Math.min(c.retFrac * N, idxOfT(ff));
+      const d = ff < 0 ? (idx - N) / N : idx / N;
+      return { state: "run", done: 0, idx: ((idx % N) + N) % N, progress: d };
     }
     if (t >= lp.end) {                         // past the last recorded lap, before retirement
-      // along the lap's time profile (like the running cars), reaching the stopping point at retT
-      const tR = tAtIdx(c.retFrac * N);
-      const idx = Math.min(c.retFrac * N, idxOfT(tR * Math.min(1, (t - lp.end) / Math.max(1e-6, c.retT - lp.end))));
+      // along the lap's time profile at its own pace (like the running cars), reaching the stopping point at retT
+      const idx = Math.min(c.retFrac * N, idxOfT(Math.min(1, (t - lp.end) / Math.max(1e-6, c.retDur))));
       return { state: "run", done: lp.lap, idx, progress: lp.lap + idx / N };
     }
     const start = lp.lap === 1 ? s0 : lp.start;
@@ -277,8 +286,7 @@ export function buildPlayback(out, track) {
       return { state: "pit", done, idx: null, pitU: u, progress: done + Math.min(0.9995, Math.max(0.0005, prog)) };
     }
     if (lp.lap === 1) {                        // from the grid slot to the line along the same time profile
-      const gi = N - g / track.step_m;           // grid slot as a point index on the previous lap
-      const F0 = tAtIdx(gi) - 1;                 // its time fraction, negative
+      const F0 = gs < 0 ? tAtIdx(gs + N) - 1 : tAtIdx(gs);   // its time fraction (negative: on the lap before)
       const ff = F0 + (1 - F0) * f;
       const idx = ff < 0 ? idxOfT(ff + 1) : idxOfT(ff);
       const d = ff < 0 ? (idx - N) * track.step_m : idx * track.step_m;
@@ -385,18 +393,31 @@ export function buildPlayback(out, track) {
   };
   const ptsBefore = (c, t) => { let lo = 0, hi = c.pts.length; while (lo < hi) { const m = (lo + hi) >> 1; if (c.pts[m] <= t) lo = m + 1; else hi = m; } return lo; };
 
+  const STAGGERED = cars.some((c) => (c.s0 ?? 0) > 0);
+  const lapRef = out.baseLap || cars.find((c) => c.laps.length)?.laps[0]?.dur || 60;
   // full timing picture at time t
   function snapshot(t) {
     const st = cars.map((c) => ({ c, ...carAt(c, t), P: ptsBefore(c, t) }));
     stagePasses(st);
     separate(st);
-    const rank = (s) => (s.state === "fin" ? 2e6 - res.get(s.c.i).pos : s.state === "dnf" ? s.progress : s.progress);
+    // A staggered start (Targa Florio, Mille Miglia style): cars leave the line at intervals, so the road order
+    // is not the race order. Running cars are ranked on time instead: where each would be had all started
+    // together (its race-time progress plus its start delay in laps); cars still waiting to start come after them.
+    const rank = !STAGGERED
+      ? (s) => (s.state === "fin" ? 2e6 - res.get(s.c.i).pos : s.progress)
+      : (s) => (s.state === "fin" ? 2e6 - res.get(s.c.i).pos : s.state === "dnf" ? s.progress
+        : s.state === "grid" ? -500 - (s.c.s0 ?? 0) / 1e4 : timeProg(Math.max(0, s.progress)) + (s.c.s0 ?? 0) / lapRef);
     const order = [...st].sort((a, b) => rank(b) - rank(a));
     const lead = order[0];
     order.forEach((s, k) => {
       s.pos = k + 1;
-      const timeAt = (o, P) => (P > 0 ? o.c.pts[P - 1] : 0);
+      const timeAt = (o, P) => (P > 0 ? o.c.pts[P - 1] - (STAGGERED ? o.c.s0 ?? 0 : 0) : 0);   // on its own clock
       const gapTo = (o) => {                  // at the last timing line both have crossed
+        if (STAGGERED) {                      // on time: at the last line both have passed, on their own clocks
+          const P = Math.min(s.P, o.P);
+          if (P === 0 || s.state === "grid") return null;
+          return { s: timeAt(s, P) - timeAt(o, P), u: Math.hypot(uAt(s.c, P), uAt(o.c, P)) };
+        }
         if (s.P === 0 || o.P < s.P) return null;
         const down = Math.floor((o.P - s.P) / 3);
         if (down >= 1 && s.state !== "fin") return { laps: down };

@@ -499,6 +499,7 @@ export class TrackMap {
     };
     this.track.sectors.forEach((ix) => tick(ix, css("--muted"), 8, 2));
     tick(0, css("--fg"), 10, 3);
+    if (this.track.start_idx) tick((this.track.start_idx + N) % N, css("--fg"), 10, 1.5);   // a start line apart (Spa, Long Beach)
     // pit lane: parallel to the main straight on the inside, from entry (before the line) to exit
     const st = this.track.step_m, PIT_OFF = 13;
     this.pitPoint = (u) => {
@@ -581,6 +582,45 @@ export function dimCarImpl(self, ctx, s, cw, fill, alpha, helmetScale) {
 export const ZOOM_MIN = 8, ZOOM_MAX = 1500;
 const CAR_LEN_M = 5.5;
 const EXAG = 1;                   // hills on the strip at true scale (no vertical exaggeration)
+// Fast playback (above 60x): the terrain under the strip is low-pass filtered along the lap, more as the speed goes up,
+// so the view doesn't bounce over every crest; the lap's big climbs and descents stay. The filter's width is the
+// distance the field covers in SMOOTH_S seconds of race time per step of speed above 60x, capped at a share of the
+// lap so the macro profile survives. Filtered profiles are cached per track and width (widths in 25% steps).
+const SMOOTH_FROM = 60, SMOOTH_S = 0.25, SMOOTH_MAX_LAP = 1 / 25;
+const smoothCache = new WeakMap();
+export function smoothedZAt(pb, speed) {
+  const Z = pb.track?.z, step = pb.track?.step_m;
+  if (!Z || !step || !(speed > SMOOTH_FROM)) return pb.zAt;
+  const vMean = pb.L / (pb.baseLap ?? 90);
+  let sigma = Math.min(vMean * (speed - SMOOTH_FROM) * SMOOTH_S, pb.L * SMOOTH_MAX_LAP);
+  sigma = 1.25 ** Math.round(Math.log(sigma) / Math.log(1.25));         // quantise: a few cached widths
+  const w = Math.round((2 * sigma) / step);                             // 3 box passes of width 2 sigma ~ a Gaussian of sigma
+  if (w < 3) return pb.zAt;
+  let byW = smoothCache.get(pb.track);
+  if (!byW) smoothCache.set(pb.track, (byW = new Map()));
+  let S = byW.get(w);
+  if (!S) {
+    const N = Z.length, h = Math.min(Math.floor(w / 2), Math.floor((N - 1) / 2));
+    let a = Float64Array.from(Z);
+    for (let pass = 0; pass < 3; pass++) {                              // circular moving average (the lap is a loop)
+      const pre = new Float64Array(N + 1);
+      for (let i = 0; i < N; i++) pre[i + 1] = pre[i] + a[i];
+      const sum = (i0, i1) => {                                         // sum of a[i0..i1], indices wrapped
+        const lo = ((i0 % N) + N) % N, n = i1 - i0 + 1;
+        return lo + n <= N ? pre[lo + n] - pre[lo] : pre[N] - pre[lo] + pre[lo + n - N];
+      };
+      const b = new Float64Array(N);
+      for (let i = 0; i < N; i++) b[i] = sum(i - h, i + h) / (2 * h + 1);
+      a = b;
+    }
+    S = a; byW.set(w, S);
+  }
+  const N = S.length;
+  return (prog) => {
+    const x = (((prog - Math.floor(prog)) * N) % N + N) % N, i = Math.floor(x), fr = x - i;
+    return S[i] + fr * (S[(i + 1) % N] - S[i]);
+  };
+}
 // sprite width floor when zoomed out (legibility): 165 px, easing to 110 px at the far end of the zoom range;
 // a crowded view shrinks sprites further, never below CAR_FLOOR_PX. OVERLAP: neighbours may overlap by this share.
 const CAR_MIN_PX = 165, CAR_MIN_FAR_PX = 110, CAR_FLOOR_PX = 80, OVERLAP = 0.3;
@@ -615,7 +655,7 @@ export class PaperdollStrip {
     // to fit the strip when the view is long.
     const fProg = focus.progress ?? 0;
     const progAtX = (x) => (pb.progOfTime ? pb.progOfTime(fT + (x - w / 2) / pxs / lapT) : fProg + (x - w / 2) / pxm / L);
-    const zAt = opts.hills !== false ? pb.zAt : null;       // the Hills box off: a flat road
+    const zAt = opts.hills !== false && pb.zAt ? smoothedZAt(pb, opts.speed) : null;   // the Hills box off: a flat road
     const zF = zAt ? zAt(fProg) : 0;
     const SX = 4, gx = [], gz = [], gd = [];
     for (let x = -SX * 2; x <= w + SX * 2; x += SX) {
@@ -658,7 +698,7 @@ export class PaperdollStrip {
     ctx.beginPath(); gx.forEach((x, k) => (k ? ctx.lineTo(x, gy[k] - (back ? 6 + back : 0)) : ctx.moveTo(x, gy[k] - (back ? 6 + back : 0)))); ctx.stroke();
     // gradient under the focus car (over 40 m of track)
     if (zAt && focus.idx !== null) {
-      const g = (pb.zAt(fProg + 20 / L) - pb.zAt(fProg - 20 / L)) / 40;
+      const g = (zAt(fProg + 20 / L) - zAt(fProg - 20 / L)) / 40;
       if (Math.abs(g) >= 0.015) {
         ctx.font = `600 11px ${css("--font-data")}`; ctx.fillStyle = css("--muted");
         ctx.fillText(`${g > 0 ? "▲ uphill" : "▼ downhill"} ${Math.round(Math.abs(g) * 100)}%`, 12, h - 10);

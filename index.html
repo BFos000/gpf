@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<base href="v/e0aa055383/">
+<base href="v/61a08519f9/">
 <title>Fantasy GP</title>
 <meta name="description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes.">
 <meta property="og:title" content="Fantasy GP"><meta property="og:description" content="Fantasy GP: race drivers and cars from every era of Grand Prix racing, 1906 to today, on real circuits with live timing. Career and Real Seasons modes."><meta property="og:type" content="website">
@@ -105,6 +105,13 @@ label.inline { display: flex; gap: 6px; align-items: center; color: var(--muted)
 .pitwall { display: flex; flex-direction: column; flex: 0 1 auto; max-height: 62%; }
 .pitwall header { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;
   border-bottom: 1px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.pitwall header .pw-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.pitwall header .pw-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pitwall header .pw-toggle::before { content: "BE"; font-size: 11px; transition: transform .15s; }
+.pitwall.collapsed header .pw-toggle::before { transform: rotate(-90deg); }
+.pitwall.collapsed { flex: 0 0 auto; }
+.pitwall.collapsed header { border-bottom: 0; }
+.pitwall.collapsed .pw-body { display: none; }
 .pw-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
 .pw-car { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; }
 .pw-car .hel { width: 28px; height: 28px; background-repeat: no-repeat; }
@@ -419,8 +426,8 @@ dialog#season { width: min(1180px, calc(100vw - 24px)); }
 
   <div class="side">
   <section class="panel pitwall" aria-label="Pit wall for the focused car">
-    <header><span>Pit wall</span><span class="badge" id="pw-badge">CPU</span></header>
-    <div class="pw-body">
+    <header><button type="button" class="pw-toggle" id="pw-toggle" aria-expanded="true" aria-controls="pw-body" title="Show or hide the pit wall (the race feed takes the space)">Pit wall</button><span class="badge" id="pw-badge">CPU</span></header>
+    <div class="pw-body" id="pw-body">
       <div class="pw-car"><span class="hel" id="pw-hel"></span><span class="nm" id="pw-name"></span><span class="badge" id="pw-pos"></span></div>
       <div class="pw-stats">
         <div><span>Tyres</span><b id="pw-tyres"></b></div>

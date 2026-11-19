@@ -12,6 +12,7 @@
 //            mod (career upgrades): pace offset in pct of lap (negative = faster), tyre-wear and failure multipliers;
 //            programme cars also: lean (power), quali (one-lap offset), degRel (replaces car.deg_rel), pitS, read
 //   relReliability?: true  // car failure rate taken relative to its own era, scaled to the rules year (mixed eras)
+//   noMech?: true          // no mechanical failures (crashes and damage still happen; a replay's real retirements stay)
 //   calls?: [{ car: entryIndex, lap, action: "box" | "stay" | "stops" | "pace", value? }],
 //            user strategy calls (game/sim/strategy.js); every other car is run by its CPU strategist
 //   replay?: a real race (game/web/history.js, docs/GAME_PLAN.md section 17). Laps 1..until are forced from the
@@ -142,7 +143,15 @@ export function setupRace(dbRaw, config, track = null) {
   const rng = makeRng(config.seed ?? 1);
   const year = config.year;
   track = eraTrack(track, year);                      // the lap's speed profile for the period's cars
-  const era = synthEra(db, year);
+  let era = synthEra(db, year);
+  // a start line apart from the finish line (Spa, Long Beach): lap 1 runs from the start line to the finish line,
+  // shorter or longer than a lap by the time share of the stretch between them
+  const S0 = track?.start_idx ?? 0;
+  if (S0) {
+    const n = track.t.length;
+    const f = S0 > 0 ? 1 - track.t[S0] : 1 + (1 - track.t[n + S0]);
+    era = { ...era, lap1_factor: era.lap1_factor * f };
+  }
   const ot = overtakingEra(db, year);
   const circuit = circuits.get(config.circuit);
   const layout = layoutFor(circuit, year, config.layout);
@@ -187,8 +196,8 @@ export function setupRace(dbRaw, config, track = null) {
     // relative reliability: the car's rate against its own era's (pre-war: that year's pre-war rate)
     const ownEra = car.year < 1950 && db.eras.prewar?.mech_per_lap?.[car.year] ? db.eras.prewar.mech_per_lap[car.year]
       : synthEra(db, car.year).p_mech_lap;
-    const pMech = config.relReliability && car.p_mech_lap
-      ? car.p_mech_lap / ownEra * era.p_mech_lap : car.p_mech_lap ?? era.p_mech_lap;
+    const pMech = config.noMech ? 0                     // the setup's "Mechanical failures: Off"
+      : config.relReliability && car.p_mech_lap ? car.p_mech_lap / ownEra * era.p_mech_lap : car.p_mech_lap ?? era.p_mech_lap;
     return {
       i, driver: d.id, name: d.name, code: d.code, helmet: d.helmet, car: car.id, carName: car.name, carYear: car.year,
       pace: carPace + absShift + sk("pace") + (m.pace ?? 0) + lean + (useCls ? car.cls_offset ?? 0 : 0),
